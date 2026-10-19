@@ -80,7 +80,7 @@ export const requestKeyExists = internalQuery({
 export const listOpenPositions = internalQuery({
   args: {},
   handler: async (ctx) =>
-    await ctx.db.query("positions").withIndex("by_symbol_status", (q) => q.eq("status", "open")).collect(),
+    await ctx.db.query("positions").filter((q) => q.eq(q.field("status"), "open")).collect(),
 });
 
 export const listOpenPositionsBySymbol = internalQuery({
@@ -111,4 +111,11 @@ export const listSwept = internalQuery({
     await ctx.db.query("liquidityLevels")
       .withIndex("by_symbol_status", (q) => q.eq("symbol", symbol).eq("status", "swept"))
       .collect(),
+});
+
+export const markBreakevenDone = internalMutation({
+  args: { positionId: v.id("positions") },
+  handler: async (ctx, { positionId }) => {
+    await ctx.db.patch(positionId, { stopMovedToBreakeven: true });
+  },
 });

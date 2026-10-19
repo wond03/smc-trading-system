@@ -1,5 +1,6 @@
 // 定时任务入口：每分钟扫描。
 // Q9 对策：状态锁 + 幂等防重复；先跑幂等性保护，数据异常直接跳过（不用旧数据硬算）。
+// 注意：cron 调度定义在 crons.config.ts（默认导出 Crons 对象），本文件只放被调度的函数。
 
 import { internalMutation, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -38,7 +39,7 @@ export const scan = internalAction({
   args: {},
   handler: async (ctx) => {
     const scanId = `scan_${Date.now()}`;
-    const got = await ctx.runMutation(internal.crons.acquireScanLock, { scanId });
+    const got = await ctx.runMutation(internal.scanner.acquireScanLock, { scanId });
     if (!got) return; // 上一轮未结束，跳过本轮（只认收盘蜡烛，跳过不影响正确性）
 
     try {
@@ -50,10 +51,10 @@ export const scan = internalAction({
         // 3. 托管检查（移保本，Q6）
         await ctx.runAction(internal.custody.checkOpenPositions, { symbol });
         // 4. 五层判断 + 风控 + 下单（同一信号引擎）
-        await ctx.runAction(internal.signalEngine.runForSymbol, { symbol });
+        await ctx.runAction(internal.signalRunner.runForSymbol, { symbol });
       }
     } finally {
-      await ctx.runMutation(internal.crons.releaseScanLock, { scanId });
+      await ctx.runMutation(internal.scanner.releaseScanLock, { scanId });
     }
   },
 });

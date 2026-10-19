@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 // 每分钟扫描（PRD 模块三：每分钟调度，实际信号最多每 5 分钟一次，Q9 额度紧张时可降频到 5 分钟）
-crons.interval("scan every minute", { minutes: 1 }, internal.crons.scan, {});
+crons.interval("scan every minute", { minutes: 1 }, internal.scanner.scan, {});
 
 // 每日小结（每日 00:05 UTC）
 crons.daily("daily summary", { hourUTC: 0, minuteUTC: 5 }, internal.reports.daily, {});

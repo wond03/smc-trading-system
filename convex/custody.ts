@@ -48,7 +48,7 @@ export const checkOpenPositions = internalAction({
         exchangeOrderId: moved.orderId, error: moved.error, time: Date.now(),
       });
       if (moved.ok) {
-        await ctx.db.patch(p._id as any, { stopMovedToBreakeven: true });
+        await ctx.runMutation(internal.records.markBreakevenDone, { positionId: p._id as any });
         await ctx.runAction(internal.notify.send, {
           level: "position",
           text: `🔒 ${p.symbol} 止盈目标触及（5m收盘确认），止损已移至入场价 ${p.entryPrice}`,

@@ -2,7 +2,7 @@
 // 注意：crons.ts / signalEngine 等 Convex 函数在 `npx convex dev` 首次运行时生成 _generated 后才能通过类型检查。
 // 本文件为部署版实现；本机 tsc 只检查纯函数层（tsconfig include 列表）。
 
-import { internalAction, internalMutation } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
@@ -78,5 +78,17 @@ export const upsertBatch = internalMutation({
         .first();
       if (!existing) await ctx.db.insert("candles", { symbol, interval, ...c });
     }
+  },
+});
+
+export const list = internalQuery({
+  args: { symbol: v.string(), interval: v.string(), take: v.number() },
+  handler: async (ctx, { symbol, interval, take }) => {
+    const rows = await ctx.db
+      .query("candles")
+      .withIndex("by_symbol_interval_time", (q) => q.eq("symbol", symbol).eq("interval", interval))
+      .order("desc")
+      .take(take);
+    return rows.reverse();
   },
 });

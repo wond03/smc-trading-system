@@ -65,7 +65,7 @@ export const runForSymbol = internalAction({
     }
 
     // —— 第 2-5 层：信号引擎 ——
-    const liquidity = (await ctx.runQuery(internal.liquidity.listSwept, { symbol })) as {
+    const liquidity = (await ctx.runQuery(internal.records.listSwept, { symbol })) as {
       kind: string; price: number; status: "swept"; sweptTime?: number;
     }[];
     const result = evaluate(m5, m15, liquidity, hourDir, DEFAULT_PARAMS);
