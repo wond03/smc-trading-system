@@ -114,4 +114,13 @@ export default defineSchema({
     detail: v.any(),
     time: v.number(),
   }),
+
+  // 扫描锁（Q9 幂等）
+  scanLocks: defineTable({
+    scanId: v.string(),
+    active: v.boolean(),
+    time: v.number(),
+  })
+    .index("by_active", ["active"])
+    .index("by_scanId", ["scanId"]),
 });
