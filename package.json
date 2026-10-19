@@ -1,0 +1,27 @@
+{
+  "name": "smc-repo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wond03/smc-trading-system.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/wond03/smc-trading-system/issues"
+  },
+  "homepage": "https://github.com/wond03/smc-trading-system#readme",
+  "dependencies": {
+    "convex": "^1.47.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}
