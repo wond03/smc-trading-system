@@ -1,9 +1,10 @@
+"use node";
 // 移保本托管（Q6）：止盈目标到达且 5m 收盘确认 → 止损移至入场价，仅一次。
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { moveStop } from "./weex";
-import { makeRequestKey } from "./weex";
+import { makeRequestKey } from "./weexKeys";
 
 export const checkOpenPositions = internalAction({
   args: { symbol: v.string() },

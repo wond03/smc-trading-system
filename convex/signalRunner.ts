@@ -1,3 +1,4 @@
+"use node";
 // 信号执行编排：五层判断 → 风控 → 开仓 → 挂止损/止盈 → 记录 → 推送。
 // 时间过滤（PRD 10.4）：伦敦开盘后 1-4h、纽约开盘后 1-3h；周五收盘前 4h 禁开新仓。
 
@@ -8,7 +9,8 @@ import type { Candle } from "./indicators";
 import { lastBOS, lastMSS } from "./indicators";
 import { evaluate, DEFAULT_PARAMS } from "./signalEngine";
 import { checkRisk, quantity } from "./risk";
-import { makeRequestKey, openMarket, placeStop, placeTakeProfit, emergencyClose } from "./weex";
+import { makeRequestKey } from "./weexKeys";
+import { openMarket, placeStop, placeTakeProfit, emergencyClose } from "./weex";
 
 const MARGIN_USD = 5;
 const LEVERAGE = 100;

@@ -22,6 +22,7 @@ import type * as signalEngine from "../signalEngine.js";
 import type * as signalRunner from "../signalRunner.js";
 import type * as types from "../types.js";
 import type * as weex from "../weex.js";
+import type * as weexKeys from "../weexKeys.js";
 
 import type {
   ApiFromModules,
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   signalRunner: typeof signalRunner;
   types: typeof types;
   weex: typeof weex;
+  weexKeys: typeof weexKeys;
 }>;
 
 /**

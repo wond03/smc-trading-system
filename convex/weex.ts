@@ -1,9 +1,10 @@
+"use node";
 // Weex 合约 API 封装（V3，模拟盘 /capi/v3/sim/）。
 // 签名规范（官方文档）：ACCESS-SIGN = Base64(HMAC-SHA256(SecretKey, timestamp+METHOD+requestPath+body))
 // 四头：ACCESS-KEY / ACCESS-SIGN / ACCESS-PASSPHRASE / ACCESS-TIMESTAMP（毫秒，误差 ≤30s）。
 // 底线 2：止损必须真实提交；提交失败 → 立即市价平仓 + 告警。
 
-import { createHmac } from "crypto";
+import { createHmac } from "node:crypto";
 
 export interface OrderResult {
   ok: boolean;
@@ -54,10 +55,6 @@ async function call(method: "POST" | "GET" | "DELETE", path: string, body?: unkn
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
-}
-
-export function makeRequestKey(signalNo: string, action: string, price: number): string {
-  return `${signalNo}:${action}:${price}`;
 }
 
 function clientOrderId(seed: string, action: string): string {
