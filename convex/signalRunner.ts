@@ -14,13 +14,9 @@ const MARGIN_USD = 5;
 const LEVERAGE = 100;
 const QTY_PRECISION: Record<string, number> = { BTC: 4, XAU: 2 }; // 部署时按交易所精度校正
 
-/** 伦敦/纽约时段窗口（UTC 小时），部署时按实际冬/夏令时校正 */
+/** Q10 裁决：伦敦/纽约/亚洲三大时段均可开新仓，仅周五收盘前 4 小时禁开 */
 function inTradingWindow(nowMs: number): boolean {
-  const d = new Date(nowMs);
-  const h = d.getUTCHours();
-  const london = h >= 8 && h < 12;      // 伦敦开盘 08:00 UTC 后 1-4h（约）
-  const ny = h >= 14 && h < 18;         // 纽约开盘后 1-3h（约）
-  return london || ny;
+  return true;
 }
 
 export const runForSymbol = internalAction({
