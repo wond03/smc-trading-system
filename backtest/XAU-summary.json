@@ -1,0 +1,14 @@
+{
+  "symbol": "XAU",
+  "days": 14,
+  "signalCount": 0,
+  "closed": 0,
+  "tp": 0,
+  "stop": 0,
+  "winRate": null,
+  "totalPnl": 0,
+  "rejectedNoLiq": 3,
+  "rejectedRR": 1,
+  "rejectedNoTarget": 5,
+  "generatedAt": "2026-10-20T06:57:39.371Z"
+}

@@ -2,9 +2,10 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Candle } from "./indicators";
-import { swingPoints } from "./indicators";
+import { swingPoints, atr14 } from "./indicators";
 
 const SWEEP_TOLERANCE = 0; // 扫荡判定本身在 indicators.isSwept 内实现
+const SWEEP_BREAK_ATR = 0.1; // Q11：破位缓冲 = 0.1 × ATR14(5m)
 
 export const updateLevels = internalMutation({
   args: { symbol: v.string() },
@@ -70,12 +71,15 @@ export const updateLevels = internalMutation({
       .withIndex("by_symbol_status", (q) => q.eq("symbol", symbol).eq("status", "untouched"))
       .collect();
     for (const lvl of untouched) {
+      // Q11 裁决：破位需超过深度缓冲，浅穿越+影线收回算扫荡
+      // 缓冲 = 0.1 × ATR14(5m)，与入场止损缓冲（0.2 ATR）同一量纲体系
+      const atrBuf = SWEEP_BREAK_ATR * atr14(m5);
       const swept = lvl.price > last.close
-        ? last.low < lvl.price && last.close > lvl.price   // 下扫收回
-        : last.high > lvl.price && last.close < lvl.price; // 上扫收回
+        ? last.low < lvl.price && last.close > lvl.price                      // 下扫收回
+        : last.high > lvl.price && last.close < lvl.price;                    // 上扫收回
       const broken = lvl.price > last.close
-        ? last.close < lvl.price
-        : last.close > lvl.price;
+        ? last.close < lvl.price - atrBuf   // 收盘深入水平下方超过缓冲才算真破位
+        : last.close > lvl.price + atrBuf;  // 收盘深入水平上方超过缓冲才算真破位
       if (swept) {
         await ctx.db.patch(lvl._id, {
           status: "swept", sweptTime: last.openTime,
@@ -83,6 +87,24 @@ export const updateLevels = internalMutation({
         });
       } else if (broken) {
         await ctx.db.patch(lvl._id, { status: "broken" });
+      }
+    }
+    // Q11 补充：假突破识别——broken 水平收盘收回缓冲内侧 → 转为 swept
+    // （SMC 经典口径：破位后收回 = liquidity sweep；第一次触碰常是动量穿越，扫荡发生在其后 1-5 根）
+    const brokenLevels = await ctx.db
+      .query("liquidityLevels")
+      .withIndex("by_symbol_status", (q) => q.eq("symbol", symbol).eq("status", "broken"))
+      .collect();
+    const atrBuf2 = SWEEP_BREAK_ATR * atr14(m5);
+    for (const lvl of brokenLevels) {
+      const backInside = lvl.price > last.close
+        ? last.close > lvl.price - atrBuf2
+        : last.close < lvl.price + atrBuf2;
+      if (backInside) {
+        await ctx.db.patch(lvl._id, {
+          status: "swept", sweptTime: last.openTime,
+          sweepDepth: Math.abs(lvl.price - last.close),
+        });
       }
     }
   },

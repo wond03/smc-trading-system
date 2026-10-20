@@ -1,0 +1,14 @@
+{
+  "symbol": "BTC",
+  "days": 14,
+  "signalCount": 0,
+  "closed": 0,
+  "tp": 0,
+  "stop": 0,
+  "winRate": null,
+  "totalPnl": 0,
+  "rejectedNoLiq": 9,
+  "rejectedRR": 1,
+  "rejectedNoTarget": 3,
+  "generatedAt": "2026-10-20T06:56:23.361Z"
+}
