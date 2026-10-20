@@ -12,7 +12,7 @@ export const send = internalAction({
     if (!token || !chatId) throw new Error("TELEGRAM 凭据未配置（convex env set）");
     const body = {
       chat_id: chatId,
-      text: `${TAGS[level]} ${text}\n\n⚠️ 不构成投资建议`,
+      text: `${TAGS[level]} ${text}`,
     };
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
