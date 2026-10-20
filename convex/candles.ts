@@ -9,7 +9,7 @@ import { v } from "convex/values";
 // Gate.io 合约映射（PRD：比特币永续 + 黄金合约）
 const GATE_SYMBOLS: Record<string, string> = {
   BTC: "BTC_USDT",
-  XAU: "XAUUSDT", // 部署时按 Gate 实际黄金合约代码校正
+  XAU: "XAU_USDT", // 部署时按 Gate 实际黄金合约代码校正
 };
 
 const INTERVAL_MS: Record<string, number> = {
