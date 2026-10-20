@@ -14,6 +14,7 @@ import type * as custody from "../custody.js";
 import type * as drill from "../drill.js";
 import type * as indicators from "../indicators.js";
 import type * as liquidity from "../liquidity.js";
+import type * as maintenance from "../maintenance.js";
 import type * as notify from "../notify.js";
 import type * as records from "../records.js";
 import type * as reports from "../reports.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   drill: typeof drill;
   indicators: typeof indicators;
   liquidity: typeof liquidity;
+  maintenance: typeof maintenance;
   notify: typeof notify;
   records: typeof records;
   reports: typeof reports;
