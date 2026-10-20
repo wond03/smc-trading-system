@@ -9,6 +9,7 @@
  */
 
 import type * as candles from "../candles.js";
+import type * as crons from "../crons.js";
 import type * as custody from "../custody.js";
 import type * as indicators from "../indicators.js";
 import type * as liquidity from "../liquidity.js";
@@ -32,6 +33,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   candles: typeof candles;
+  crons: typeof crons;
   custody: typeof custody;
   indicators: typeof indicators;
   liquidity: typeof liquidity;
