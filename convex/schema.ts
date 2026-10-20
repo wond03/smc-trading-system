@@ -123,4 +123,11 @@ export default defineSchema({
   })
     .index("by_active", ["active"])
     .index("by_scanId", ["scanId"]),
+
+  // 用量监控状态（Q9 对策③：降频开关等键值对，可覆写非流水）
+  usageState: defineTable({
+    key: v.string(),
+    value: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
 });

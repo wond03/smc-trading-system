@@ -38,6 +38,10 @@ export const releaseScanLock = internalMutation({
 export const scan = internalAction({
   args: {},
   handler: async (ctx) => {
+    // Q9 对策③：降频状态时 5 次触发只执行 1 次（分钟取模）
+    const throttled = await ctx.runQuery(internal.usage.isThrottled, {});
+    if (throttled && new Date().getMinutes() % 5 !== 0) return;
+
     const scanId = `scan_${Date.now()}`;
     const got = await ctx.runMutation(internal.scanner.acquireScanLock, { scanId });
     if (!got) return; // 上一轮未结束，跳过本轮（只认收盘蜡烛，跳过不影响正确性）
