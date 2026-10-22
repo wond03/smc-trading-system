@@ -1,5 +1,5 @@
 "use node";
-// 移保本托管（Q6）：止盈目标到达且 5m 收盘确认 → 止损移至入场价，仅一次。
+// 移保本托管（Q6 修订为 Q23）：止盈目标到达且 30M 收盘确认 → 止损移至入场价，仅一次。
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
@@ -15,10 +15,11 @@ export const checkOpenPositions = internalAction({
       stopMovedToBreakeven: boolean; exchangeStopOrderId?: string;
     }[];
 
-    const m5 = (await ctx.runQuery(internal.candles.list, { symbol, interval: "5m", take: 3 })) as {
+    // Q23：30M 收盘确认（5M 作废）
+    const m30 = (await ctx.runQuery(internal.candles.list, { symbol, interval: "30m", take: 3 })) as {
       high: number; low: number; close: number; openTime: number;
     }[];
-    const last = m5[m5.length - 1];
+    const last = m30[m30.length - 1];
     if (!last) return;
 
     for (const p of positions) {

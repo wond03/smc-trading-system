@@ -7,7 +7,8 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
 const SYMBOLS = ["BTC", "XAU"] as const;
-const SCANNED_INTERVALS = ["1d", "1h", "15m", "5m"] as const;
+// Q19/Q24：扫描周期定案 4h + 30m，1d/1h/15m/5m 全部停采
+const SCANNED_INTERVALS = ["4h", "30m"] as const;
 
 // 扫描锁：同一时刻只允许一轮扫描进行（防定时任务重叠导致重复下单，Q9-②）
 export const acquireScanLock = internalMutation({

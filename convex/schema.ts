@@ -36,17 +36,20 @@ export default defineSchema({
     signalNo: v.string(),      // 幂等键
     symbol: v.string(),
     direction: v.string(),     // long | short
+    trigger: v.optional(v.string()), // sweep | divergence（Q22 扳机分支）
     poiLow: v.number(),
     poiHigh: v.number(),
-    poiHasFvg: v.boolean(),    // OB+FVG 重叠（可信度加权，Q3）
     entryRef: v.number(),
     stopRef: v.number(),
     takeProfitRef: v.number(), // 一笔全仓止盈（Q5）
     rr: v.number(),            // 盈亏比
-    sweepLevel: v.number(),    // 触发扫荡的流动性水平
-    sweepTime: v.number(),
+    positionFraction: v.optional(v.number()), // Q22：扫荡=1.0，背离=0.5
+    sweepLevel: v.optional(v.number()),       // 扫荡扳机时的水平
+    sweepTime: v.optional(v.number()),
+    divergenceLow: v.optional(v.number()),    // Q16：背离低点（止损参考）
+    divergenceHigh: v.optional(v.number()),
     mssTime: v.number(),
-    triggerKind: v.string(),   // sweepReversal | choch | engulfing
+    triggerKind: v.string(),
     createdTime: v.number(),
   })
     .index("by_signalNo", ["signalNo"]),

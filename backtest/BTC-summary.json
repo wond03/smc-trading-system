@@ -1,14 +1,24 @@
 {
   "symbol": "BTC",
   "days": 14,
+  "mode": "new",
   "signalCount": 0,
   "closed": 0,
   "tp": 0,
   "stop": 0,
   "winRate": null,
   "totalPnl": 0,
-  "rejectedNoLiq": 9,
-  "rejectedRR": 1,
-  "rejectedNoTarget": 3,
-  "generatedAt": "2026-10-20T06:56:23.361Z"
+  "triggerSweep": 39,
+  "triggerDivergence": 0,
+  "rejected": {
+    "trigSweep": 39,
+    "trigDiv": 0,
+    "noTrig": 4,
+    "noPoi": 17,
+    "noMss": 0,
+    "rrReject": 1,
+    "noTarget": 0,
+    "stopTooFar": 1
+  },
+  "generatedAt": "2026-10-22T00:37:02.084Z"
 }

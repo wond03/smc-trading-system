@@ -13,7 +13,7 @@ const GATE_SYMBOLS: Record<string, string> = {
 };
 
 const INTERVAL_MS: Record<string, number> = {
-  "1d": 86400000, "1h": 3600000, "15m": 900000, "5m": 300000,
+  "4h": 14400000, "30m": 1800000,
 };
 
 export const fetchAndStore = internalAction({

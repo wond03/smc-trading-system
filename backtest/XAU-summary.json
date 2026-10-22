@@ -1,14 +1,24 @@
 {
   "symbol": "XAU",
   "days": 14,
+  "mode": "new",
   "signalCount": 0,
   "closed": 0,
   "tp": 0,
   "stop": 0,
   "winRate": null,
   "totalPnl": 0,
-  "rejectedNoLiq": 3,
-  "rejectedRR": 1,
-  "rejectedNoTarget": 5,
-  "generatedAt": "2026-10-20T06:57:39.371Z"
+  "triggerSweep": 15,
+  "triggerDivergence": 4,
+  "rejected": {
+    "trigSweep": 15,
+    "trigDiv": 4,
+    "noTrig": 21,
+    "noPoi": 11,
+    "noMss": 5,
+    "rrReject": 0,
+    "noTarget": 0,
+    "stopTooFar": 0
+  },
+  "generatedAt": "2026-10-22T00:37:04.247Z"
 }

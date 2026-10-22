@@ -1,6 +1,7 @@
 "use node";
 // 信号执行编排：五层判断 → 风控 → 开仓 → 挂止损/止盈 → 记录 → 推送。
-// 时间过滤（PRD 10.4）：伦敦开盘后 1-4h、纽约开盘后 1-3h；周五收盘前 4h 禁开新仓。
+// 时段过滤（Q18）：仅北京时间 20:00–24:00 开新仓；周五收盘前 4h 禁开。
+// 周期（Q19/Q24）：4H 定方向 + 30M 执行。
 
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -15,10 +16,14 @@ import { openMarket, placeStop, placeTakeProfit, emergencyClose } from "./weex";
 const MARGIN_USD = 5;
 const LEVERAGE = 100;
 const QTY_PRECISION: Record<string, number> = { BTC: 4, XAU: 2 }; // 部署时按交易所精度校正
+const MAX_RISK_PCT = 0.02;      // Q15：单笔风险 ≤2%（以保证金口径的止损距离约束）
+const MAX_CONCURRENT = 2;       // Q15：并发持仓 ≤2 张
 
-/** Q10 裁决：伦敦/纽约/亚洲三大时段均可开新仓，仅周五收盘前 4 小时禁开 */
+/** Q18：仅北京时间（UTC+8）20:00–24:00 开新仓 */
 function inTradingWindow(nowMs: number): boolean {
-  return true;
+  const bj = new Date(nowMs + 8 * 3600000);
+  const hour = bj.getUTCHours();
+  return hour >= 20 && hour < 24;
 }
 
 export const runForSymbol = internalAction({
@@ -37,43 +42,41 @@ export const runForSymbol = internalAction({
       return;
     }
 
-    // —— 取已收盘蜡烛 ——
-    const m5 = (await loadCandles(ctx, symbol, "5m", 300))!;
-    const m15 = (await loadCandles(ctx, symbol, "15m", 200))!;
-    const h1 = (await loadCandles(ctx, symbol, "1h", 200))!;
-    const d1 = (await loadCandles(ctx, symbol, "1d", 30))!;
-    if (!m5 || !m15 || !h1 || !d1 || m5.length < 50 || d1.length < 3) {
+    // —— 取已收盘蜡烛（Q19/Q24：4H + 30M）——
+    const m30 = (await loadCandles(ctx, symbol, "30m", 300))!;
+    const h4 = (await loadCandles(ctx, symbol, "4h", 200))!;
+    if (!m30 || !h4 || m30.length < 50 || h4.length < 15) {
       await ctx.runMutation(internal.records.logDataAnomaly, {
         symbol, detail: { kind: "insufficient_candles" },
       });
       return;
     }
 
-    // —— 第 1 层：日线 + 一小时同向 ——
-    const dailyMss = lastMSS(d1, "up"); // 日线 MSS 方向（简化：以最近 BOS 方向为准）
-    const bos = lastBOS(h1);
-    const dailyDir = dailyMss?.direction ?? (d1[d1.length - 1]!.close > d1[d1.length - 2]!.close ? "up" : "down");
-    const hourDir = bos?.direction;
-    if (!hourDir || hourDir !== dailyDir) {
+    // —— 第 1 层：4H 方向 + 30M 同向（Q13 方案 A：冲突时不挂大级别逆向单，直接跳过本轮）——
+    const bos4h = lastBOS(h4, 3);          // 4H 摆动窗口 = 3 根
+    const bos30 = lastBOS(m30, 6);         // 30M 摆动窗口 = 6 根
+    const dir4h = bos4h?.direction;
+    const dir30 = bos30?.direction;
+    if (!dir4h || !dir30 || dir4h !== dir30) {
       await ctx.runMutation(internal.records.logScan, {
         scanTime: now, symbol, outcome: "watching",
-        layerResults: { layer: 1, dailyDir, hourDir, reason: "日线与一小时方向矛盾" },
+        layerResults: { layer: 1, dailyDir: dir4h, hourDir: dir30, reason: "4H 与 30M 方向矛盾（Q13：不逆向）" },
       });
       return;
     }
 
-    // —— 第 2-5 层：信号引擎 ——
+    // —— 第 2-5 层：信号引擎（30M 执行 + 4H 流动性）——
     const liquidity = (await ctx.runQuery(internal.records.listSwept, { symbol })) as {
       kind: string; price: number; status: "swept"; sweptTime?: number;
     }[];
-    const result = evaluate(m5, m15, liquidity, hourDir, DEFAULT_PARAMS);
+    const result = evaluate(m30, h4, liquidity, dir30, false, DEFAULT_PARAMS);
 
     // 判断链路落表（PRD 7.2：每次扫描产出结论即写）
     await ctx.runMutation(internal.records.logScan, {
       scanTime: now, symbol,
       outcome: result.outcome === "signal" ? "signal" : result.outcome,
       layerResults: {
-        layer: result.layer, dailyDir, hourDir, reason: result.reason,
+        layer: result.layer, dailyDir: dir4h, hourDir: dir30, reason: result.reason,
         sweptLevels: liquidity.map((l) => l.price),
         signal: result.signal ?? null,
       },
@@ -82,13 +85,14 @@ export const runForSymbol = internalAction({
     if (result.outcome !== "signal" || !result.signal) return;
     const sig = result.signal;
 
-    // —— 信号幂等：同一扫荡水平 + POI 只推一次 ——
-    const signalNo = `${symbol}_${sig.sweepLevel}_${sig.mssTime}_${sig.direction}`;
+    // —— 信号幂等：扳机位 + MSS 时间 + 方向 只推一次 ——
+    const trigRef = sig.sweepLevel ?? sig.divergenceLow ?? sig.divergenceHigh ?? 0;
+    const signalNo = `${symbol}_${sig.trigger}_${trigRef}_${sig.mssTime}_${sig.direction}`;
     const dup = await ctx.runQuery(internal.records.findSignal, { signalNo });
     if (dup) return;
 
-    // —— 风控 ——
-    const riskInput = await collectRiskInput(ctx, symbol, now);
+    // —— 风控（Q15：并发 ≤2 张由 maxPositions 承担；单笔 ≤2% 由数量缩放承担）——
+    const riskInput = await collectRiskInput(ctx, symbol, now, MAX_CONCURRENT);
     const decision = checkRisk(riskInput, symbol);
     if (!decision.allowed) {
       await ctx.runMutation(internal.records.logRiskEvent, {
@@ -104,9 +108,17 @@ export const runForSymbol = internalAction({
     // —— 写信号记录 ——
     await ctx.runMutation(internal.records.insertSignal, { signalNo, symbol, ...sig, createdTime: now });
 
-    // —— 开仓（幂等：requestKey）——
-    const price = m5[m5.length - 1]!.close;
-    const qty = quantity(MARGIN_USD, LEVERAGE, price, QTY_PRECISION[symbol] ?? 2);
+    // —— 开仓（幂等：requestKey；Q22 半仓分级；Q14 语义：以 entryRef 挂单价为风险基准）——
+    // 实盘执行：市价开仓 + 限价挂单等回踩由托管层跟进（一期简化：市价成交价≈收盘价，
+    // 风险计算用 entryRef 与 stopRef，与回测同一口径）
+    const price = m30[m30.length - 1]!.close;
+    const entryRef = sig.entryRef;
+    const marginUsed = MARGIN_USD * (sig.positionFraction ?? 1);
+    // Q15：止损距离超保证金 2% 风险时缩数量到 2% 以内（以挂单价为基准，与回测一致）
+    const stopDistPct = Math.abs(entryRef - sig.stopRef) / entryRef;
+    const marginByRisk = stopDistPct > MAX_RISK_PCT ? MARGIN_USD * (MAX_RISK_PCT / stopDistPct) : marginUsed;
+    const effectiveMargin = Math.min(marginUsed, marginByRisk);
+    const qty = quantity(effectiveMargin, LEVERAGE, price, QTY_PRECISION[symbol] ?? 2);
     const openKey = makeRequestKey(signalNo, "open", price);
     if (!(await ctx.runQuery(internal.records.requestKeyExists, { requestKey: openKey }))) {
       await ctx.runMutation(internal.records.logOrder, {
@@ -163,14 +175,14 @@ export const runForSymbol = internalAction({
       await ctx.runAction(internal.notify.send, {
         level: "signal",
         text: [
-          `📈 ${symbol} ${sig.direction === "long" ? "做多" : "做空"}`,
-          `POI: ${sig.poiLow} - ${sig.poiHigh}${sig.poiHasFvg ? "（含FVG重叠）" : ""}`,
+          `📈 ${symbol} ${sig.direction === "long" ? "做多" : "做空"}（${sig.trigger === "sweep" ? "扫荡" : "背离"}扳机${sig.positionFraction < 1 ? "·半仓" : ""}）`,
+          `POI: ${sig.poiLow} - ${sig.poiHigh}`,
           `入场参考: ${sig.entryRef}`,
           `止损: ${sig.stopRef}`,
           `止盈: ${sig.takeProfitRef}`,
           `盈亏比: ${sig.rr.toFixed(2)}`,
-          `触发: ${sig.triggerKind} | 扫荡位: ${sig.sweepLevel}`,
-          `已市价开仓 ${qty}（5U×100x 逐仓）`,
+          `触发: ${sig.triggerKind}`,
+          `已市价开仓 ${qty}（${effectiveMargin}U×100x 逐仓）`,
         ].join("\n"),
       });
     }
@@ -182,7 +194,7 @@ async function loadCandles(ctx: any, symbol: string, interval: string, take: num
   return rows as Candle[];
 }
 
-async function collectRiskInput(ctx: any, symbol: string, now: number) {
+async function collectRiskInput(ctx: any, symbol: string, now: number, maxPositions: number) {
   const openPositions = (await ctx.runQuery(internal.records.listOpenPositions)) as {
     symbol: string; status: string;
   }[];
@@ -194,7 +206,7 @@ async function collectRiskInput(ctx: any, symbol: string, now: number) {
   return {
     openPositions, todayRealizedLossUsd: todayLoss,
     recentClosesBySymbol: closesBySymbol,
-    maxPositions: 2, dailyLossCapUsd: 15,
+    maxPositions, dailyLossCapUsd: 15,
     consecutiveStopLimit: 3, consecutiveStopPauseMs: 24 * 3600000,
     now,
   };

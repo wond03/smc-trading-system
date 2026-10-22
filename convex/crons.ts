@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// 每分钟扫描（PRD 模块三：每分钟调度，实际信号最多每 5 分钟一次，Q9 额度紧张时可降频到 5 分钟）
+// 扫描调度（Q24：30M 收线 2 次/小时，其余分钟做托管/数据更新，跳过信号判定在 runner 时段过滤内自然发生）
 crons.interval("scan every minute", { minutes: 1 }, internal.scanner.scan, {});
 crons.hourly("usage check", { minuteUTC: 2 }, internal.usage.checkUsage, {});
 

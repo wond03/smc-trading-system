@@ -39,9 +39,12 @@ export const logRiskEvent = internalMutation({
 export const insertSignal = internalMutation({
   args: {
     signalNo: v.string(), symbol: v.string(), direction: v.string(),
-    poiLow: v.number(), poiHigh: v.number(), poiHasFvg: v.boolean(),
+    trigger: v.optional(v.string()),
+    poiLow: v.number(), poiHigh: v.number(),
     entryRef: v.number(), stopRef: v.number(), takeProfitRef: v.number(),
-    rr: v.number(), sweepLevel: v.number(), sweepTime: v.number(),
+    rr: v.number(), positionFraction: v.optional(v.number()),
+    sweepLevel: v.optional(v.number()), sweepTime: v.optional(v.number()),
+    divergenceLow: v.optional(v.number()), divergenceHigh: v.optional(v.number()),
     mssTime: v.number(), triggerKind: v.string(), createdTime: v.number(),
   },
   handler: async (ctx, a) => { await ctx.db.insert("signals", a); },
