@@ -54,3 +54,9 @@ PRD **v1.0 已裁决待开发**：Q1–Q25 全部落档（v0.8 落 Q12–Q22，v
 - 安全：API 密钥只进 `npx convex env set`；`.env.local` 已 gitignore
 
 > 本系统不构成投资建议。
+
+## 上线记录（2026-10-22）
+- 新口径引擎已部署 dev deployment `gregarious-goat-621`（project smc-sys），`npx convex dev --once` 推送成功，索引 12 个已建。
+- WEEX 模拟盘凭据已 `convex env set`（值不入库）；TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID **尚未配置**（待用户提供）——signalRunner 里 TG 推送会抛错但不影响扫描链路（notify 失败仅记日志，需确认）。回测 A/B：新口径 60d BTC 1 单（+1.97U）/XAU 3 单（+8.85U，66.7% 胜率）；旧口径 14d 0-1 单（对照作废口径）。
+- 扫描 cron 每分钟运行中，scanRecords 正常写入；20:00-24:00（北京）时段外全拒绝=Q18 预期。
+- 回测成交价口径修正：入场=挂单价 entryRef（Q14），修复了旧实现「TP<entry」的方向 bug（probe19 定位）。
