@@ -45,6 +45,27 @@ async function fetchCandles(symbol: string, interval: string, from: number, to: 
 // ———————— 流动性水平（30M 口径）————————
 interface Level extends LiquidityLevel { id: string; }
 
+
+// 转势位辅助：扫荡极值方向校验（多头转=低点极值，空头转=高点极值）
+
+function trigRefOf(swept: any, div: any, dir: string): number {
+  return swept ? swept.price : ((dir === "up" ? div?.divergenceLow : div?.divergenceHigh) ?? 0);
+}
+
+function dirLong0(se: number | undefined, dir: "up" | "down"): number | undefined {
+  if (se === undefined) return undefined;
+  // 无法在此判方向正确性，直接返回（状态机记录时已按刺穿侧记录）
+  return se;
+}
+function poiPrevLow(m30: Candle[], sinceTime: number): number {
+  const seg = m30.filter((c) => c.openTime >= sinceTime);
+  return seg.length ? Math.min(...seg.map((c) => c.low)) : 0;
+}
+function poiPrevHigh(m30: Candle[], sinceTime: number): number {
+  const seg = m30.filter((c) => c.openTime >= sinceTime);
+  return seg.length ? Math.max(...seg.map((c) => c.high)) : 0;
+}
+
 function buildLevels(m30: Candle[], upTo: number): Level[] {
   const out: Level[] = [];
   const swings = swingPoints(m30, 6);
@@ -89,6 +110,9 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
   let todayLoss = 0;
   let todayKey = "";
   let stats = { trigSweep: 0, trigDiv: 0, noTrig: 0, noPoi: 0, noMss: 0, rrReject: 0, noTarget: 0, stopTooFar: 0, dupSetup: 0, rrAbsurd: 0 };
+  const setupSeen = new Set<string>();
+  const setupStats = { total: 0, mss: 0, choch: 0, poi: 0, window: 0, rr: 0, final: 0 };
+  const setupKey = (lv: number, d: string) => `${Math.round(lv)}_${d}`;
 
   let h4Cursor = 0;
 
@@ -191,6 +215,8 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     if (!swept && !divOk) { stats.noTrig++; continue; }
     const trigger: "sweep" | "divergence" = swept ? "sweep" : "divergence";
     if (trigger === "sweep") stats.trigSweep++; else stats.trigDiv++;
+    const sk = setupKey(trigRefOf(swept, div, dir), dir);
+    if (!setupSeen.has(sk)) { setupSeen.add(sk); setupStats.total++; }
 
     // 8) 第 3 层：MSS + 转势位（2026-10-22 晚重排，用户裁决「先改」）：
     // 体系主锚是「转」（05 篇 §6 ①-⑤）：MSS 确认后用 chochAfter 定位转势位
@@ -198,10 +224,12 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     const triggerTime = trigger === "sweep" ? (swept!.sweptTime ?? 0) : (div!.time ?? 0);
     const mss = mssAfter(m30, triggerTime, dir, 6);
     if (!mss) { stats.noMss++; continue; }
-    const choch = chochAfter(m30, triggerTime, dir, 6);
-    if (!choch) { stats.noMss++; continue; } // 无转势位=体系里「没有入场锚」→ 不做
-    // 转势位锚点：「那个低点」（05 篇 §7 步骤 7）——多头=转势低点，空头=转势高点
-    const chochLevel = dir === "up" ? choch.pivotLow : choch.pivotHigh;
+    setupStats.mss++;
+    // 转势位（2026-10-22 晚二修，probe23 定位 chochAfter 逻辑错误）：
+    // 「转」的确认就是 MSS 本身；转势位=最后一次进攻的起点=扫荡极值（sweepExtreme，状态机记录）。
+    // 05 篇 §6 ③「结局点与被结局高点之间找最低点」→ 实务上=扫荡蜡烛的影线极值。
+    const chochLevel = dirLong0(sweptLevels[0]?.sweepExtreme, dir)
+      ?? (dir === "up" ? poiPrevLow(m30, triggerTime) : poiPrevHigh(m30, triggerTime));
     const atr30 = atr14(m30);
 
     // 9) 第 4 层：FVG POI
@@ -213,15 +241,10 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     if (!poiList.length) { stats.noPoi++; continue; }
     // POI 选择（2026-10-22 晚重排）：取「转位回踩路径上」最近的 FVG——
     // 多头=low 在转势位上方（回踩先到 FVG 再到转位）；且距离转位 ≤1×ATR。全都不满足才算「无 FVG」。
-    const chochLv = dir === "up" ? choch.pivotLow : choch.pivotHigh;
-    const onPath = poiList.filter((z) => {
-      const edge = dir === "up" ? z.high : z.low;
-      return dir === "up"
-        ? edge >= chochLv && edge - chochLv <= 1.0 * atr30
-        : edge <= chochLv && chochLv - edge <= 1.0 * atr30;
-    });
-    if (!onPath.length) { stats.noPoi++; continue; }
-    const poiFinal = onPath[onPath.length - 1]!;
+    const chochLv = chochLevel;
+    // POI=最近顺方向 FVG（回踩深度约束在第 5 层「转位以内」承担，不在 POI 选择处硬过滤）
+    const poiFinal = poiList[poiList.length - 1]!;
+    setupStats.poi++;
     void poi;
 
     // 10) 第 5 层（S6/S7）：MSS 后 12 根窗口内等待回踩+形态；市价追单路径
@@ -233,47 +256,33 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     // 多头回踩触及 chochLevel（转势低点）及其上方缓冲；FVG 作为确认条件须与转位相邻（≤0.5×ATR）。
     const entryZoneEdge = dirLong ? chochLevel : chochLevel; // 回踩目标边=转势位
     const poiEdge = dirLong ? poiFinal.high : poiFinal.low;
-    // FVG 须在回踩路径上：多头=入场边（FVG 高缘）在转位上方 ≤1×ATR（回踩能同时经过 FVG 到转位）
-    const fvgNearChoch = dirLong
-      ? poiEdge >= chochLevel && poiEdge - chochLevel <= 1.0 * atr30
-      : poiEdge <= chochLevel && chochLevel - poiEdge <= 1.0 * atr30;
-    if (!fvgNearChoch) { stats.noPoi++; continue; } // FVG 不在转位回踩路径上=不是体系入场区
+    // FVG 须在回踩路径上（2026-10-22 晚三修，probe24 定位）：路径=转位 ↔ MSS 后窗口远端（整段），
+    // 不限 1ATR——回踩是过程不是点，FVG 落在路径区间内即可作为回踩确认。
+    // （FVG 路径校验移至 winBars 定义之后）
     const winBars = m30.slice(mssIdx); // MSS 蜡烛起至当前
+    // —— 第 5 层（2026-10-22 晚五修，用户纠偏 MSS 概念后重排）——
+    // MSS=「回踩破前低/前高」的转势确认动作本身；MSS 确认即入场信号（19篇§27 保底策略：
+    // 「15m MSS 即入场，不要求回踩时抓，确认即可进」）。删除自创的「形态确认」层。
+    // FVG 的角色：入场位置确认——MSS 确认蜡烛收盘价须位于顺方向 FVG 区域或其边缘（有 FVG 支撑的入场）；
+    // 若 MSS 时无 FVG 支撑，等 12 根窗口内回踩到 FVG 再进（19篇§27「15 分钟回踩必须有 FVG，没有 FVG 不做」）。
+    if (Math.abs(poiEdge - chochLevel) > 3.0 * atr30) { stats.noPoi++; continue; }
     let marketChase = false;
     let hitKind: string | null = null;
     let hitBar: typeof m30[number] | null = null;
-    for (const c of winBars) {
-      // 回踩到转位以内：影线触及 [chochLevel, poiEdge] 区间（多头）或 [poiEdge, chochLevel]（空头）
-      const zLo = Math.min(chochLevel, poiEdge), zHi = Math.max(chochLevel, poiEdge);
-      const touched = c.low <= zHi && c.high >= zLo;
-      const walkedAway = dirLong ? c.close - poiEdge > atr30 : poiEdge - c.close > atr30;
-      if (walkedAway && !touched) {
-        const earlierTouch = winBars.slice(0, winBars.indexOf(c)).some(
-          (p) => p.low <= poiFinal.high && p.high >= poiFinal.low,
-        );
-        if (!earlierTouch) { marketChase = true; hitKind = "marketChase"; hitBar = c; break; }
-      }
-      if (touched) {
-        const idx = winBars.indexOf(c);
-        for (let j = idx; j <= Math.min(idx + 1, winBars.length - 1); j++) {
-          const seg = m30.slice(0, m30.indexOf(winBars[j]!) + 1);
-          const lc = seg[seg.length - 1]!, pv = seg[seg.length - 2]!;
-          const kind =
-            (dirLong && lc.close > lc.open && lc.close > pv.high) ||
-            (!dirLong && lc.close < lc.open && lc.close < pv.low)
-              ? "engulf"
-              : (dirLong && lc.low < poiFinal.low && lc.close > poiFinal.low) ||
-                (!dirLong && lc.high > poiFinal.high && lc.close < poiFinal.high)
-                ? "sweepReversal"
-                : (dirLong && lc.close > pv.high && lc.close > lc.open) ||
-                  (!dirLong && lc.close < pv.low && lc.close < lc.open)
-                  ? "choch" : null;
-          if (kind) { hitKind = kind; hitBar = winBars[j]!; break; }
-        }
-        if (hitKind) break;
+    // a) MSS 确认蜡烛本身在 FVG 区域内/边缘 → 确认即入场
+    const mssBar = winBars[0]!;
+    const inFvg = mssBar.low <= poiFinal.high && mssBar.high >= poiFinal.low;
+    if (inFvg) {
+      hitKind = "mssInFvg"; hitBar = mssBar;
+    } else {
+      // b) 窗口内等回踩 FVG（影线触及）→ 回踩即入场（挂单语义，不加形态条件）
+      for (const c of winBars) {
+        const touched = c.low <= poiFinal.high && c.high >= poiFinal.low;
+        if (touched) { hitKind = "retraceFvg"; hitBar = c; break; }
       }
     }
     if (!hitKind) continue;
+    setupStats.window++;
     const triggerKind = hitKind;
 
     // 11) 入场/止损/止盈
@@ -290,26 +299,28 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
         ? chochLevel - 0.2 * atr30
         : chochLevel + 0.2 * atr30;
     }
-    if (Math.abs(entryRef - stopRef) > 1.6 * atr30) { stats.stopTooFar++; continue; }
+    // 止损宽度上限（原 1.6ATR 工程假设，2026-10-22 晚移除）：体系里止损=转势位外侧，
+    // 宽度由结构决定，风险由仓位（单笔≤2%）控制——不以「止损宽」为由拒单（Q23 口径修正）。
+    if (Math.abs(entryRef - stopRef) > 4.0 * atr30) { stats.stopTooFar++; continue; } // 仅拒绝异常离谱（4ATR+）
     const risk = Math.abs(entryRef - stopRef);
-    // 止盈（用户裁决 ②B）：打【大池子】——昨日高低 / 亚洲盘高低优先，其次 swing 摆动位；
-    // 只要求顺方向未破（swept 未收回的仍可作为目标），距离 ≥1×ATR 过滤路边的微小位。
-    const bigFirst = (k: string) => (k === "prevDayHigh" || k === "prevDayLow" || k === "asiaHigh" || k === "asiaLow") ? 0 : 1;
-    const bigTargets = levels
+    // 止盈（2026-10-22 晚六修）：目标=顺方向【最近的结构位】——大池子（昨日/亚洲盘）和 swing
+    // 一起按距离排序取最近（≥1×ATR 过滤微小位）。体系「止盈标市场高低点/流动性位」，
+    // 「固定盈亏比是个人设定」→ 目标取市场给的第一处明确位置，不是最远的大池子。
+    const allTargets = levels
       .filter((l) => l.status !== "broken")
       .map((l) => l.price)
       .filter((p) => (dirLong ? p > entryRef : p < entryRef))
-      .filter((p) => Math.abs(p - entryRef) >= atr30);
-    const kindOf = new Map(levels.map((l) => [l.price, l.kind]));
-    bigTargets.sort((a, b) => {
-      const ka = bigFirst(kindOf.get(a) ?? ""), kb = bigFirst(kindOf.get(b) ?? "");
-      if (ka !== kb) return ka - kb;
-      return dirLong ? a - b : b - a;
-    });
-    if (!bigTargets.length) { stats.noTarget++; continue; }
-    let tp = bigTargets[0]!;
-    let rr = Math.abs(tp - entryRef) / risk;
-    if (rr < DEFAULT_PARAMS.minRR) { stats.rrReject++; continue; }
+      .filter((p) => Math.abs(p - entryRef) >= 0.5 * atr30)
+      .sort((a, b) => (dirLong ? a - b : b - a));
+    if (!allTargets.length) { stats.noTarget++; continue; }
+    // 取第一个满足 RR≥1.5 的目标（最近的合格结构位）；全都不满足才拒
+    let tp: number | null = null;
+    let rr = 0;
+    for (const p of allTargets) {
+      const r2 = Math.abs(p - entryRef) / risk;
+      if (r2 >= DEFAULT_PARAMS.minRR && r2 <= 5) { tp = p; rr = r2; break; }
+    }
+    if (tp === null) { stats.rrReject++; continue; }
 
     // 12) 信号幂等 + 开仓（Q14：入场价 = 挂单价 entryRef，触发蜡烛只做确认）
     // 幂等（2026-10-22 补充）：同一 setup 不重复开仓——同方向、同一 FVG（poiFinal）只做一次。
@@ -322,6 +333,7 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
         Math.abs(t.entry - entryRef) < 0.25 * atr30, // 入场价差 <0.25×ATR 视为同一 FVG
     );
     if (sameSetup) { stats.dupSetup = (stats.dupSetup ?? 0) + 1; continue; }
+    setupStats.final++;
     // 目标选择（查尔斯口径）：顺方向**最近的**结构性流动性——「先看前低/前高」，不是最远水平。
     // RR 上限 5：波动定预期（03 篇规则 11），RR>5 说明目标选错或止损过窄。
     // RR>5（波动定预期，03 篇规则 11）：大池子太远 → 降级取顺方向最近 swing 目标；仍>5 才拒
@@ -368,6 +380,7 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
   console.log(`止盈: ${wins.length} | 止损: ${losses.length} | 胜率: ${done.length ? (wins.length / done.length * 100).toFixed(1) : "-"}%`);
   console.log(`总盈亏: ${totalPnl.toFixed(2)} USDT`);
   console.log(`扳机分布: 扫荡 ${stats.trigSweep} | 背离 ${stats.trigDiv}`);
+  console.log(`独立setup漏斗: 总${setupStats.total} MSS后${setupStats.mss} FVG可用${setupStats.poi} 窗口触发${setupStats.window} 开仓${setupStats.final}`);
   console.log(`拒绝统计: 无扳机 ${stats.noTrig} | 无MSS ${stats.noMss} | 无FVG ${stats.noPoi} | 止损超限 ${stats.stopTooFar} | RR不足 ${stats.rrReject} | RR离谱 ${stats.rrAbsurd} | 重复setup ${stats.dupSetup} | 无目标 ${stats.noTarget}`);
   console.log("\n--- 交易明细 ---");
   for (const t of done) {
