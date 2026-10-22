@@ -18,8 +18,9 @@ const fmt = (ms) => {
 };
 const KIND_NAME = { prevDayHigh: "昨日高", prevDayLow: "昨日低", asiaHigh: "亚盘高", asiaLow: "亚盘低", swingHigh: "前高", swingLow: "前低" };
 
+const symbol = (process.argv[2] ?? "BTC").toUpperCase();
 (async () => {
-  const trades = JSON.parse(readFileSync("backtest/BTC-trades.json", "utf8"));
+  const trades = JSON.parse(readFileSync(`backtest/${symbol}-trades.json`, "utf8"));
   const svgs = [];
   for (let tradeIdx = 0; tradeIdx < trades.length; tradeIdx++) {
     const t = trades[tradeIdx];
@@ -70,6 +71,14 @@ const KIND_NAME = { prevDayHigh: "昨日高", prevDayLow: "昨日低", asiaHigh:
       bars += `<line x1="${x(i)}" y1="${y(c.high)}" x2="${x(i)}" y2="${y(c.low)}" stroke="${col}" stroke-width="1"/>`;
       bars += `<rect x="${x(i) - cw/2}" y="${y(Math.max(c.open, c.close))}" width="${cw}" height="${Math.max(y(Math.min(c.open, c.close)) - y(Math.max(c.open, c.close)), 1)}" fill="${col}"/>`;
     });
+
+    // x 轴时间刻度（用户要求：K 线要有时间戳）——每 12 根（6h）一格
+    let tickSvg = "";
+    for (let ti = 0; ti < cs.length; ti += 12) {
+      const d = new Date(cs[ti].openTime);
+      const lab = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`;
+      tickSvg += `<line x1="${x(ti)}" y1="${H - padB}" x2="${x(ti)}" y2="${H - padB + 4}" stroke="#999" stroke-width="1"/><text x="${x(ti)}" y="${H - padB + 16}" fill="#666" font-size="10" text-anchor="middle">${lab}</text>`;
+    }
 
     // —— 右侧标签防重叠布局 ——
     // 收集所有右列标签 {y, color, text}，按 y 排序后强制最小间距
@@ -142,9 +151,11 @@ const KIND_NAME = { prevDayHigh: "昨日高", prevDayLow: "昨日低", asiaHigh:
       <circle cx="${xOpen}" cy="${y(t.entry)}" r="9" fill="none" stroke="#2196f3" stroke-width="2.5"/>
       <text x="${padL}" y="${H - 40}" fill="#555" font-size="12" font-weight="bold">路径：扫荡 → 转确认 → 回踩FVG入场 → 打目标流动性　|　结果：${result}　持仓 ${Math.round((t.exitTime - t.openTime) / 3600000)}h</text>
       <text x="${padL}" y="${H - 20}" fill="#999" font-size="10">周期 30M ｜ 打掉即错，不拉损</text>`;
-    const title = `#${tradeIdx + 1} ${t.symbol} ${t.direction.toUpperCase()} [${t.trigger}] ${result}`;
-    svgs.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><text x="${padL}" y="22" fill="#111" font-size="15" font-weight="bold">${title}</text>${bars}${fvgRect}${struct}${turnMark}${sweepMark}${rightCol}${bottom}</svg>`);
+    const openD = new Date(t.openTime);
+  const ts = `${String(openD.getMonth() + 1).padStart(2, "0")}-${String(openD.getDate()).padStart(2, "0")} ${String(openD.getHours()).padStart(2, "0")}:${String(openD.getMinutes()).padStart(2, "0")} 北京`;
+  const title = `#${tradeIdx + 1} ${t.symbol} ${t.direction.toUpperCase()} [${t.trigger}] ${openD.getFullYear()}-${ts} ${result}`;
+    svgs.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><text x="${padL}" y="22" fill="#111" font-size="15" font-weight="bold">${title}</text>${bars}${fvgRect}${struct}${turnMark}${sweepMark}${rightCol}${tickSvg}${bottom}</svg>`);
   }
-  writeFileSync("backtest/BTC-story4.svg", svgs.join("\n"));
+  writeFileSync(`backtest/${symbol}-story4.svg`, svgs.join("\n"));
   console.log(`生成 ${svgs.length} 张 v4`);
 })();

@@ -7,7 +7,7 @@
 // 扳机=扫荡或背离（背离半仓）；POI=FVG 独占（30 根生命周期）；止损=背离低点/结构点。
 // 模拟对齐实盘 signalRunner：时段过滤（北京时间 20:00–24:00）、周五尾盘禁开、checkRisk。
 import type { Candle } from "../convex/indicators";
-import { swingPoints, bosEvents, mssAfter, atr14, detectDivergence, fvgZones } from "../convex/indicators";
+import { swingPoints, bosEvents, mssAfter, atr14, detectDivergence, fvgZones, chochAfter } from "../convex/indicators";
 import { evaluate, DEFAULT_PARAMS, type LiquidityLevel } from "../convex/signalEngine";
 import { checkRisk } from "../convex/risk";
 
@@ -105,16 +105,17 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     const atrBuf = 0.1 * atr14(m30All.slice(Math.max(0, i - 59), i + 1));
     for (const lvl of levels) {
       if (lvl.status === "swept") continue;
-      const swept = lvl.price > c.close
-        ? c.low < lvl.price && c.close > lvl.price
-        : c.high > lvl.price && c.close < lvl.price;
-      const broken = lvl.price > c.close ? c.close < lvl.price - atrBuf : c.close > lvl.price + atrBuf;
+      // 扫荡方向按影线刺穿侧判定：下刺（low<level 且收回上方）=抓下方流动性，极值=low；上刺反之
+      const sweptLow = c.low < lvl.price && c.close > lvl.price;
+      const sweptHigh = c.high > lvl.price && c.close < lvl.price;
+      const swept = sweptLow || sweptHigh;
+      const broken = c.close < lvl.price - atrBuf || c.close > lvl.price + atrBuf;
       if (lvl.status === "untouched") {
-        if (swept) { lvl.status = "swept"; lvl.sweptTime = c.openTime; }
+        if (swept) { lvl.status = "swept"; lvl.sweptTime = c.openTime; lvl.sweepExtreme = sweptLow ? c.low : c.high; }
         else if (broken) { lvl.status = "broken"; }
       } else if (lvl.status === "broken") {
         const backInside = lvl.price > c.close ? c.close > lvl.price - atrBuf : c.close < lvl.price + atrBuf;
-        if (backInside) { lvl.status = "swept"; lvl.sweptTime = c.openTime; }
+        if (backInside) { lvl.status = "swept"; lvl.sweptTime = c.openTime; lvl.sweepExtreme = c.close > lvl.price ? c.low : c.high; }
       }
     }
 
@@ -181,7 +182,7 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     const sweptLevels: LiquidityLevel[] = levels
       .filter((l) => l.status === "swept")
       .filter((l) => !recent3.some((c) => (dir === "up" ? c.close < l.price : c.close > l.price)))
-      .map((l) => ({ kind: l.kind, price: l.price, status: "swept", sweptTime: l.sweptTime }));
+      .map((l) => ({ kind: l.kind, price: l.price, status: "swept", sweptTime: l.sweptTime, sweepExtreme: l.sweepExtreme }));
     const div = detectDivergence(m30, 6);
     const divOk = div !== null && div.direction === (dir === "up" ? "long" : "short");
     const swept = sweptLevels.length
@@ -191,10 +192,17 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     const trigger: "sweep" | "divergence" = swept ? "sweep" : "divergence";
     if (trigger === "sweep") stats.trigSweep++; else stats.trigDiv++;
 
-    // 8) 第 3 层：MSS（顺方向，扳机之后，Q12 收盘确认）
+    // 8) 第 3 层：MSS + 转势位（2026-10-22 晚重排，用户裁决「先改」）：
+    // 体系主锚是「转」（05 篇 §6 ①-⑤）：MSS 确认后用 chochAfter 定位转势位
+    // （结局点与被结局高/低点之间的极值点，连续两根收盘突破=转确认）。
     const triggerTime = trigger === "sweep" ? (swept!.sweptTime ?? 0) : (div!.time ?? 0);
     const mss = mssAfter(m30, triggerTime, dir, 6);
     if (!mss) { stats.noMss++; continue; }
+    const choch = chochAfter(m30, triggerTime, dir, 6);
+    if (!choch) { stats.noMss++; continue; } // 无转势位=体系里「没有入场锚」→ 不做
+    // 转势位锚点：「那个低点」（05 篇 §7 步骤 7）——多头=转势低点，空头=转势高点
+    const chochLevel = dir === "up" ? choch.pivotLow : choch.pivotHigh;
+    const atr30 = atr14(m30);
 
     // 9) 第 4 层：FVG POI
     const zones = fvgZones(m30, m30.length - 1, 30);
@@ -202,23 +210,42 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
       dir === "up" ? z.direction === "long" : z.direction === "short",
     )[ zones.length ? zones.length - 1 : 0 ];
     const poiList = zones.filter((z) => (dir === "up" ? z.direction === "long" : z.direction === "short"));
-    const poiFinal = poiList[poiList.length - 1];
-    if (!poiFinal) { stats.noPoi++; continue; }
+    if (!poiList.length) { stats.noPoi++; continue; }
+    // POI 选择（2026-10-22 晚重排）：取「转位回踩路径上」最近的 FVG——
+    // 多头=low 在转势位上方（回踩先到 FVG 再到转位）；且距离转位 ≤1×ATR。全都不满足才算「无 FVG」。
+    const chochLv = dir === "up" ? choch.pivotLow : choch.pivotHigh;
+    const onPath = poiList.filter((z) => {
+      const edge = dir === "up" ? z.high : z.low;
+      return dir === "up"
+        ? edge >= chochLv && edge - chochLv <= 1.0 * atr30
+        : edge <= chochLv && chochLv - edge <= 1.0 * atr30;
+    });
+    if (!onPath.length) { stats.noPoi++; continue; }
+    const poiFinal = onPath[onPath.length - 1]!;
     void poi;
 
     // 10) 第 5 层（S6/S7）：MSS 后 12 根窗口内等待回踩+形态；市价追单路径
-    const atr30 = atr14(m30);
     // MSS 蜡烛在 m30 中的索引
     const mssIdx = m30.findIndex((c) => c.openTime === mss.time);
     if (mssIdx < 0) continue;
     const dirLong = dir === "up";
+    // 入场区（2026-10-22 晚重排）：回踩必须「到转位以内」（19 篇 §1）——
+    // 多头回踩触及 chochLevel（转势低点）及其上方缓冲；FVG 作为确认条件须与转位相邻（≤0.5×ATR）。
+    const entryZoneEdge = dirLong ? chochLevel : chochLevel; // 回踩目标边=转势位
     const poiEdge = dirLong ? poiFinal.high : poiFinal.low;
+    // FVG 须在回踩路径上：多头=入场边（FVG 高缘）在转位上方 ≤1×ATR（回踩能同时经过 FVG 到转位）
+    const fvgNearChoch = dirLong
+      ? poiEdge >= chochLevel && poiEdge - chochLevel <= 1.0 * atr30
+      : poiEdge <= chochLevel && chochLevel - poiEdge <= 1.0 * atr30;
+    if (!fvgNearChoch) { stats.noPoi++; continue; } // FVG 不在转位回踩路径上=不是体系入场区
     const winBars = m30.slice(mssIdx); // MSS 蜡烛起至当前
     let marketChase = false;
     let hitKind: string | null = null;
     let hitBar: typeof m30[number] | null = null;
     for (const c of winBars) {
-      const touched = c.low <= poiFinal.high && c.high >= poiFinal.low;
+      // 回踩到转位以内：影线触及 [chochLevel, poiEdge] 区间（多头）或 [poiEdge, chochLevel]（空头）
+      const zLo = Math.min(chochLevel, poiEdge), zHi = Math.max(chochLevel, poiEdge);
+      const touched = c.low <= zHi && c.high >= zLo;
       const walkedAway = dirLong ? c.close - poiEdge > atr30 : poiEdge - c.close > atr30;
       if (walkedAway && !touched) {
         const earlierTouch = winBars.slice(0, winBars.indexOf(c)).some(
@@ -257,18 +284,31 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
       const divLevel = dirLong ? (div!.divergenceLow ?? poiFinal.low) : (div!.divergenceHigh ?? poiFinal.high);
       stopRef = dirLong ? divLevel - 0.05 * atr30 : divLevel + 0.05 * atr30;
     } else {
-      stopRef = dirLong ? poiFinal.low - 0.2 * atr30 : poiFinal.high + 0.2 * atr30;
+      // 止损（2026-10-22 晚重排）：挂「那个低点」=转势位外侧（05 篇 §7 步骤 7；03 篇背离低点同理）。
+      // 转势位=最后一次进攻的起点，价格回到它下方=转失败。
+      stopRef = dirLong
+        ? chochLevel - 0.2 * atr30
+        : chochLevel + 0.2 * atr30;
     }
     if (Math.abs(entryRef - stopRef) > 1.6 * atr30) { stats.stopTooFar++; continue; }
     const risk = Math.abs(entryRef - stopRef);
-    const targets = levels
+    // 止盈（用户裁决 ②B）：打【大池子】——昨日高低 / 亚洲盘高低优先，其次 swing 摆动位；
+    // 只要求顺方向未破（swept 未收回的仍可作为目标），距离 ≥1×ATR 过滤路边的微小位。
+    const bigFirst = (k: string) => (k === "prevDayHigh" || k === "prevDayLow" || k === "asiaHigh" || k === "asiaLow") ? 0 : 1;
+    const bigTargets = levels
       .filter((l) => l.status !== "broken")
       .map((l) => l.price)
       .filter((p) => (dirLong ? p > entryRef : p < entryRef))
-      .sort((a, b) => (dirLong ? a - b : b - a));
-    if (!targets.length) { stats.noTarget++; continue; }
-    const tp = targets[0]!;
-    const rr = Math.abs(tp - entryRef) / risk;
+      .filter((p) => Math.abs(p - entryRef) >= atr30);
+    const kindOf = new Map(levels.map((l) => [l.price, l.kind]));
+    bigTargets.sort((a, b) => {
+      const ka = bigFirst(kindOf.get(a) ?? ""), kb = bigFirst(kindOf.get(b) ?? "");
+      if (ka !== kb) return ka - kb;
+      return dirLong ? a - b : b - a;
+    });
+    if (!bigTargets.length) { stats.noTarget++; continue; }
+    let tp = bigTargets[0]!;
+    let rr = Math.abs(tp - entryRef) / risk;
     if (rr < DEFAULT_PARAMS.minRR) { stats.rrReject++; continue; }
 
     // 12) 信号幂等 + 开仓（Q14：入场价 = 挂单价 entryRef，触发蜡烛只做确认）
@@ -284,8 +324,22 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     if (sameSetup) { stats.dupSetup = (stats.dupSetup ?? 0) + 1; continue; }
     // 目标选择（查尔斯口径）：顺方向**最近的**结构性流动性——「先看前低/前高」，不是最远水平。
     // RR 上限 5：波动定预期（03 篇规则 11），RR>5 说明目标选错或止损过窄。
-    const REASONABLE_TP = 5;
-    if (rr > REASONABLE_TP) { stats.rrAbsurd = (stats.rrAbsurd ?? 0) + 1; continue; }
+    // RR>5（波动定预期，03 篇规则 11）：大池子太远 → 降级取顺方向最近 swing 目标；仍>5 才拒
+    if (rr > 5) {
+      const nearSwing = levels
+        .filter((l) => l.kind.startsWith("swing") && l.status !== "broken")
+        .map((l) => l.price)
+        .filter((p) => (dirLong ? p > entryRef : p < entryRef))
+        .sort((a, b) => (dirLong ? a - b : b - a))[0];
+      if (nearSwing) {
+        const rr2 = Math.abs(nearSwing - entryRef) / risk;
+        // 降级目标必须仍在 [minRR, 5] 带内，否则=无明确目标位，不做（19 篇 §4）
+        if (rr2 >= DEFAULT_PARAMS.minRR && rr2 <= 5) {
+          tp = nearSwing;
+          rr = rr2;
+        } else { stats.rrAbsurd = (stats.rrAbsurd ?? 0) + 1; continue; }
+      } else { stats.rrAbsurd = (stats.rrAbsurd ?? 0) + 1; continue; }
+    }
 
     // 挂单成交价 = entryRef（限价回踩）；同根保守检查：该蜡烛 low 已破止损 → 视为立即止损
     const entry = entryRef * (dirLong ? 1 - SLIPPAGE : 1 + SLIPPAGE); // 限价单不吃顺向滑点，只留缓冲

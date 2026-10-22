@@ -126,6 +126,57 @@ export function lastMSS(
   return null;
 }
 
+
+/**
+ * 转势位（CHOCH，2026-10-22 晚裁决：体系主锚，05 篇 §6 ①-⑤）：
+ * ① 大级别结局：recentSweepTime 处流动性被抓（对前高/低扫或破）→
+ * ② 切小级别 → ③ 结局点与被结局的那个高/低点之间找最低点（多头转）/最高点（空头转），
+ *    有更近结构点取更近 → ④ 该点被连续两根收盘突破（BOS 条件）→ ⑤ 该点=转势位。
+ * 返回 null = 无有效转。
+ */
+export function chochAfter(
+  candles: Candle[],
+  sinceTime: number,
+  direction: "up" | "down",       // 转势后的方向（多头转=up）
+  n = 6,
+): { time: number; level: number; pivotLow: number; pivotHigh: number } | null {
+  const sinceIdx = candles.findIndex((c) => c.openTime >= sinceTime);
+  if (sinceIdx < 0 || sinceIdx >= candles.length - 2) return null;
+  const seg = candles.slice(sinceIdx);
+  const swings = swingPoints(candles.slice(0, Math.max(sinceIdx, n + 1)), n);
+  if (!swings.length) return null;
+  if (direction === "up") {
+    // ③ 被结局的那个高点=扫荡前最近未破 swing high；最低点在扫荡后段内找
+    const refHigh = swings.filter((s) => s.kind === "high").pop();
+    let best: { index: number; price: number } | null = null;
+    for (let i = 0; i < seg.length; i++) {
+      const c = seg[i]!;
+      if (!best || c.low < best.price) best = { index: sinceIdx + i, price: c.low };
+    }
+    if (!best || !refHigh || best.price >= refHigh.price) return null;
+    // ④ 连续两根收盘突破该最低点（向上转确认）
+    for (let i = best.index + 1; i < candles.length - 1; i++) {
+      if (candles[i]!.close > best.price && candles[i + 1]!.close > best.price) {
+        return { time: candles[i + 1]!.openTime, level: best.price, pivotLow: best.price, pivotHigh: refHigh.price };
+      }
+    }
+  } else {
+    const refLow = swings.filter((s) => s.kind === "low").pop();
+    let best: { index: number; price: number } | null = null;
+    for (let i = 0; i < seg.length; i++) {
+      const c = seg[i]!;
+      if (!best || c.high > best.price) best = { index: sinceIdx + i, price: c.high };
+    }
+    if (!best || !refLow || best.price <= refLow.price) return null;
+    for (let i = best.index + 1; i < candles.length - 1; i++) {
+      if (candles[i]!.close < best.price && candles[i + 1]!.close < best.price) {
+        return { time: candles[i + 1]!.openTime, level: best.price, pivotLow: refLow.price, pivotHigh: best.price };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * 顺方向 MSS（扳机后确认）：自 sinceTime 起，第一根收盘穿越「逆方向最近已成形摆动点」。
  * 语义：向上 MSS = 扳机后收盘上穿最近摆动高点；向下 = 收盘下穿最近摆动低点。

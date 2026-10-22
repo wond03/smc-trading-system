@@ -26,6 +26,7 @@ export interface LiquidityLevel {
   price: number;
   status: "untouched" | "swept" | "broken";
   sweptTime?: number;
+  sweepExtreme?: number; // 扫荡蜡烛影线极值（止损锚点）
 }
 
 export interface FiveLayerResult {
