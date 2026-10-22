@@ -25,7 +25,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
   for (let tradeIdx = 0; tradeIdx < trades.length; tradeIdx++) {
     const t = trades[tradeIdx];
     const span = 36 * 3600000;
-    const cs = await fetchK("BTC_USDT", "30m", Math.floor((t.openTime - span) / 1000), Math.floor((t.openTime + span) / 1000));
+    const cs = await fetchK(symbol === "XAU" ? "XAU_USDT" : "BTC_USDT", "30m", Math.floor((t.openTime - span) / 1000), Math.floor((t.openTime + span) / 1000));
     if (cs.length < 10) continue;
     const dirLong = t.direction === "long";
     const pre = cs.filter(c => c.openTime <= t.openTime);
@@ -57,9 +57,14 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
     const W = 1100, H = 1500, padL = 20, padR = 280, padT = 50, padB = 110;
     const plotW = W - padL - padR;
     const allPrices = [...cs.map(c => c.low), ...cs.map(c => c.high), t.stop, t.tp, ...uniq.map(l => l.price)];
-    const lo = Math.min(...allPrices) * 0.9993, hi = Math.max(...allPrices) * 1.0007;
+    // y 轴只由 K线+入/损/盈 决定；远端流动性水平不撑大缩放（XAU 价位跨度大时把 K线压成一条缝的根因）
+    const corePrices = [...cs.map(c => c.low), ...cs.map(c => c.high), t.stop, t.tp, t.entry];
+    const lo = Math.min(...corePrices) * 0.998, hi = Math.max(...corePrices) * 1.002;
     const x = (i) => padL + (i / (cs.length - 1)) * plotW;
-    const y = (p) => padT + (1 - (p - lo) / (hi - lo)) * (H - padT - padB);
+    const y = (p) => {
+      const v = padT + (1 - (p - lo) / (hi - lo)) * (H - padT - padB);
+      return Math.max(padT, Math.min(H - padB, v)); // clamp：超范围的水平线贴边，不画出画布
+    };
     const cw = plotW / cs.length * 0.7;
     const xi = cs.findIndex(c => c.openTime >= t.openTime);
     const xOpen = xi >= 0 ? x(xi) : x(0);
