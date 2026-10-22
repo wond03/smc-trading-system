@@ -21,7 +21,8 @@ const KIND_NAME = { prevDayHigh: "昨日高", prevDayLow: "昨日低", asiaHigh:
 (async () => {
   const trades = JSON.parse(readFileSync("backtest/BTC-trades.json", "utf8"));
   const svgs = [];
-  for (const t of trades) {
+  for (let tradeIdx = 0; tradeIdx < trades.length; tradeIdx++) {
+    const t = trades[tradeIdx];
     const span = 36 * 3600000;
     const cs = await fetchK("BTC_USDT", "30m", Math.floor((t.openTime - span) / 1000), Math.floor((t.openTime + span) / 1000));
     if (cs.length < 10) continue;
@@ -141,7 +142,7 @@ const KIND_NAME = { prevDayHigh: "昨日高", prevDayLow: "昨日低", asiaHigh:
       <circle cx="${xOpen}" cy="${y(t.entry)}" r="9" fill="none" stroke="#2196f3" stroke-width="2.5"/>
       <text x="${padL}" y="${H - 40}" fill="#555" font-size="12" font-weight="bold">路径：扫荡 → 转确认 → 回踩FVG入场 → 打目标流动性　|　结果：${result}　持仓 ${Math.round((t.exitTime - t.openTime) / 3600000)}h</text>
       <text x="${padL}" y="${H - 20}" fill="#999" font-size="10">周期 30M ｜ 打掉即错，不拉损</text>`;
-    const title = `${t.symbol} ${t.direction.toUpperCase()} [${t.trigger}] ${result}`;
+    const title = `#${tradeIdx + 1} ${t.symbol} ${t.direction.toUpperCase()} [${t.trigger}] ${result}`;
     svgs.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><text x="${padL}" y="22" fill="#111" font-size="15" font-weight="bold">${title}</text>${bars}${fvgRect}${struct}${turnMark}${sweepMark}${rightCol}${bottom}</svg>`);
   }
   writeFileSync("backtest/BTC-story4.svg", svgs.join("\n"));

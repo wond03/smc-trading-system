@@ -88,7 +88,7 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
   const closedBySymbol: Record<string, ("stop" | "tp" | "manual")[]> = { [symbol]: [] };
   let todayLoss = 0;
   let todayKey = "";
-  let stats = { trigSweep: 0, trigDiv: 0, noTrig: 0, noPoi: 0, noMss: 0, rrReject: 0, noTarget: 0, stopTooFar: 0 };
+  let stats = { trigSweep: 0, trigDiv: 0, noTrig: 0, noPoi: 0, noMss: 0, rrReject: 0, noTarget: 0, stopTooFar: 0, dupSetup: 0, rrAbsurd: 0 };
 
   let h4Cursor = 0;
 
@@ -272,9 +272,20 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     if (rr < DEFAULT_PARAMS.minRR) { stats.rrReject++; continue; }
 
     // 12) 信号幂等 + 开仓（Q14：入场价 = 挂单价 entryRef，触发蜡烛只做确认）
+    // 幂等（2026-10-22 补充）：同一 setup 不重复开仓——同方向、同一 FVG（poiFinal）只做一次。
+    // 「背离一出，两张单结束」「30 分钟图每天 2-3 单」：同 setup 打两笔违反纪律。
     const trigRef = trigger === "sweep" ? swept!.price : (dirLong ? div!.divergenceLow : div!.divergenceHigh) ?? 0;
     const signalNo = `${symbol}_${trigger}_${trigRef}_${mss.time}_${direction}`;
     if (trades.some((t) => t.signalNo === signalNo)) continue;
+    const sameSetup = trades.find(
+      (t) => t.symbol === symbol && t.direction === direction &&
+        Math.abs(t.entry - entryRef) < 0.25 * atr30, // 入场价差 <0.25×ATR 视为同一 FVG
+    );
+    if (sameSetup) { stats.dupSetup = (stats.dupSetup ?? 0) + 1; continue; }
+    // 目标选择（查尔斯口径）：顺方向**最近的**结构性流动性——「先看前低/前高」，不是最远水平。
+    // RR 上限 5：波动定预期（03 篇规则 11），RR>5 说明目标选错或止损过窄。
+    const REASONABLE_TP = 5;
+    if (rr > REASONABLE_TP) { stats.rrAbsurd = (stats.rrAbsurd ?? 0) + 1; continue; }
 
     // 挂单成交价 = entryRef（限价回踩）；同根保守检查：该蜡烛 low 已破止损 → 视为立即止损
     const entry = entryRef * (dirLong ? 1 - SLIPPAGE : 1 + SLIPPAGE); // 限价单不吃顺向滑点，只留缓冲
@@ -303,7 +314,7 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
   console.log(`止盈: ${wins.length} | 止损: ${losses.length} | 胜率: ${done.length ? (wins.length / done.length * 100).toFixed(1) : "-"}%`);
   console.log(`总盈亏: ${totalPnl.toFixed(2)} USDT`);
   console.log(`扳机分布: 扫荡 ${stats.trigSweep} | 背离 ${stats.trigDiv}`);
-  console.log(`拒绝统计: 无扳机 ${stats.noTrig} | 无MSS ${stats.noMss} | 无FVG ${stats.noPoi} | 止损超限 ${stats.stopTooFar} | RR不足 ${stats.rrReject} | 无目标 ${stats.noTarget}`);
+  console.log(`拒绝统计: 无扳机 ${stats.noTrig} | 无MSS ${stats.noMss} | 无FVG ${stats.noPoi} | 止损超限 ${stats.stopTooFar} | RR不足 ${stats.rrReject} | RR离谱 ${stats.rrAbsurd} | 重复setup ${stats.dupSetup} | 无目标 ${stats.noTarget}`);
   console.log("\n--- 交易明细 ---");
   for (const t of done) {
     console.log(`${new Date(t.openTime).toISOString().slice(0, 16)} ${t.direction.toUpperCase()} [${t.trigger}] 入${t.entry.toFixed(1)} 损${t.stop.toFixed(1)} 盈${t.tp.toFixed(1)} RR${t.rr.toFixed(2)} → ${t.result} ${(t.pnlUsd ?? 0).toFixed(2)}U`);

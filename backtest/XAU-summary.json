@@ -7,18 +7,20 @@
   "tp": 2,
   "stop": 3,
   "winRate": 0.4,
-  "totalPnl": 4.595833112642096,
-  "triggerSweep": 89,
+  "totalPnl": 5.125714943007374,
+  "triggerSweep": 134,
   "triggerDivergence": 5,
   "rejected": {
-    "trigSweep": 89,
+    "trigSweep": 134,
     "trigDiv": 5,
     "noTrig": 0,
-    "noPoi": 34,
-    "noMss": 6,
-    "rrReject": 29,
-    "noTarget": 4,
-    "stopTooFar": 13
+    "noPoi": 46,
+    "noMss": 10,
+    "rrReject": 48,
+    "noTarget": 8,
+    "stopTooFar": 15,
+    "dupSetup": 0,
+    "rrAbsurd": 4
   },
-  "generatedAt": "2026-10-22T04:54:45.468Z"
+  "generatedAt": "2026-10-22T10:15:01.759Z"
 }
