@@ -206,28 +206,52 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     if (!poiFinal) { stats.noPoi++; continue; }
     void poi;
 
-    // 10) 第 5 层：回踩 + 触发形态
-    const last30 = m30[m30.length - 1]!;
-    const inPoi = last30.low <= poiFinal.high && last30.high >= poiFinal.low;
-    if (!inPoi) continue;
-    const prev = m30[m30.length - 2]!;
+    // 10) 第 5 层（S6/S7）：MSS 后 12 根窗口内等待回踩+形态；市价追单路径
+    const atr30 = atr14(m30);
+    // MSS 蜡烛在 m30 中的索引
+    const mssIdx = m30.findIndex((c) => c.openTime === mss.time);
+    if (mssIdx < 0) continue;
     const dirLong = dir === "up";
-    const triggerKind =
-      (dirLong && last30.close > last30.open && last30.close > prev.high) ||
-      (!dirLong && last30.close < last30.open && last30.close < prev.low)
-        ? "engulf"
-        : (dirLong && last30.low < poiFinal.low && last30.close > poiFinal.low) ||
-          (!dirLong && last30.high > poiFinal.high && last30.close < poiFinal.high)
-          ? "sweepReversal"
-          : (dirLong && last30.close > prev.high && last30.close > last30.open) ||
-            (!dirLong && last30.close < prev.low && last30.close < last30.open)
-            ? "choch" : null;
-    if (!triggerKind) continue;
+    const poiEdge = dirLong ? poiFinal.high : poiFinal.low;
+    const winBars = m30.slice(mssIdx); // MSS 蜡烛起至当前
+    let marketChase = false;
+    let hitKind: string | null = null;
+    let hitBar: typeof m30[number] | null = null;
+    for (const c of winBars) {
+      const touched = c.low <= poiFinal.high && c.high >= poiFinal.low;
+      const walkedAway = dirLong ? c.close - poiEdge > atr30 : poiEdge - c.close > atr30;
+      if (walkedAway && !touched) {
+        const earlierTouch = winBars.slice(0, winBars.indexOf(c)).some(
+          (p) => p.low <= poiFinal.high && p.high >= poiFinal.low,
+        );
+        if (!earlierTouch) { marketChase = true; hitKind = "marketChase"; hitBar = c; break; }
+      }
+      if (touched) {
+        const idx = winBars.indexOf(c);
+        for (let j = idx; j <= Math.min(idx + 1, winBars.length - 1); j++) {
+          const seg = m30.slice(0, m30.indexOf(winBars[j]!) + 1);
+          const lc = seg[seg.length - 1]!, pv = seg[seg.length - 2]!;
+          const kind =
+            (dirLong && lc.close > lc.open && lc.close > pv.high) ||
+            (!dirLong && lc.close < lc.open && lc.close < pv.low)
+              ? "engulf"
+              : (dirLong && lc.low < poiFinal.low && lc.close > poiFinal.low) ||
+                (!dirLong && lc.high > poiFinal.high && lc.close < poiFinal.high)
+                ? "sweepReversal"
+                : (dirLong && lc.close > pv.high && lc.close > lc.open) ||
+                  (!dirLong && lc.close < pv.low && lc.close < lc.open)
+                  ? "choch" : null;
+          if (kind) { hitKind = kind; hitBar = winBars[j]!; break; }
+        }
+        if (hitKind) break;
+      }
+    }
+    if (!hitKind) continue;
+    const triggerKind = hitKind;
 
     // 11) 入场/止损/止盈
     const direction: "long" | "short" = dirLong ? "long" : "short";
     const entryRef = dirLong ? poiFinal.high : poiFinal.low;
-    const atr30 = atr14(m30);
     let stopRef: number;
     if (trigger === "divergence") {
       const divLevel = dirLong ? (div!.divergenceLow ?? poiFinal.low) : (div!.divergenceHigh ?? poiFinal.high);

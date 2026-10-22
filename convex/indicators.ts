@@ -191,11 +191,15 @@ export function fvgZones(candles: Candle[], endIndex: number, maxAge = FVG_MAX_A
     else if (c.high < a.low) z = { low: c.high, high: a.low, direction: "short" };
     if (z) zones.push({ ...z, createdIndex: i, createdTime: c.openTime, status: "open" });
   }
-  // 生命周期：其后任一蜡烛影线触及区间 → filled；createdIndex 距今 > maxAge → expired（不返回）
+  // 生命周期（S5，2026-10-22 裁决：影线【完全穿过】区间才算 filled——19 篇 #7「影线填完 FVG 即失效，
+  // 未填完仍有效」；影线只碰到一半，剩余半截仍是有效入场区）：
+  //   多头 FVG（low=前高, high=后低）：填完 = 某根影线 low <= z.low（下穿整个区间）
+  //   空头 FVG：填完 = 某根影线 high >= z.high
+  // createdIndex 距今 > maxAge → expired（不返回）
   for (const z of zones) {
     for (let i = z.createdIndex + 1; i <= endIndex; i++) {
       const c = candles[i]!;
-      if (c.low <= z.high && c.high >= z.low) {
+      if (z.direction === "long" ? c.low <= z.low : c.high >= z.high) {
         z.status = "filled";
         break;
       }

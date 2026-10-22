@@ -138,21 +138,55 @@ export function evaluate(
   // 取最近的（MSS 之后形成优先）
   const poi = poiCandidates[poiCandidates.length - 1]!;
 
-  // —— 第 5 层：回踩 POI + 触发形态（Q14：确认后挂回踩）——
-  // 回踩判定：影线触及 FVG 区间即算（实盘挂单语义——限价单挂在 FVG 边缘，影线扫到即成交），
-  // 之后仍需触发形态做右侧确认（2026-10-22 裁决：影线触及，非收盘进入）
-  const last30 = candles30m[candles30m.length - 1]!;
-  const inPoi = last30.low <= poi.high && last30.high >= poi.low;
-  if (!inPoi) {
-    return { outcome: "watching", layer: 5, reason: "等待回踩 FVG" };
+  // —— 第 5 层：MSS 后挂单等待（S6）+ 入场方式（S7，2026-10-22 裁决）——
+  // S6：MSS 后 12 根 30M 内，回踩 FVG（影线触及）+ 触发形态 在窗口内任意蜡烛凑齐即触发
+  //    （原实现只在「当前一根蜡烛」判定，回踩与形态分属两根时整个 setup 被作废——日内变周线的根因）
+  // S7：两种入场并存（01/02 篇：挂单拿好价，市价防「没吃到」）：
+  //    a) 挂单：价格回踩 FVG + 触发形态 → entryRef 成交
+  //    b) 市价：MSS 后价格未回踩直接走掉 >1×ATR（entryRef 起算）→ 市价追，entry=当前收盘
+  const WAIT_BARS = 12; // S6：等待窗口（量化「回踩隔太久则旧 FVG 失效」）
+  const sinceMss = candles30m.findIndex((c) => c.openTime === mss.time);
+  if (sinceMss < 0 || sinceMss > candles30m.length - 1) {
+    return { outcome: "watching", layer: 5, reason: "MSS 时间异常" };
   }
-  const triggerKind = detectTrigger(candles30m, expected, poi);
-  if (!triggerKind) {
-    return { outcome: "watching", layer: 5, reason: "FVG 内等待触发形态" };
+  const poiEdgeEarly = dir === "long" ? poi.high : poi.low; // 挂单价（FVG 边缘）
+  const entryBuffer = atr30;
+  const window = candles30m.slice(sinceMss); // MSS 蜡烛起（含）至当前
+  let marketChase = false;
+  let hit: { kind: string; bar: Candle } | null = null;
+  for (const c of window) {
+    // b) 市价追单：MSS 后价格直接走掉 >1×ATR 且始终未回踩
+    const walkedAway = dir === "long"
+      ? c.close - poiEdgeEarly > entryBuffer
+      : poiEdgeEarly - c.close > entryBuffer;
+    const touched = c.low <= poi.high && c.high >= poi.low;
+    if (walkedAway && !touched && !hit) {
+      // 检查更早蜡烛是否有回踩（有则走挂单路径而非追单）
+      const earlierTouch = window.slice(0, window.indexOf(c)).some(
+        (p) => p.low <= poi.high && p.high >= poi.low,
+      );
+      if (!earlierTouch) { marketChase = true; hit = { kind: "marketChase", bar: c }; break; }
+    }
+    if (touched) {
+      // a) 挂单路径：回踩后，该蜡烛或其后 1 根内出现触发形态
+      const idx = window.indexOf(c);
+      for (let j = idx; j <= Math.min(idx + 1, window.length - 1); j++) {
+        const seg = candles30m.slice(0, candles30m.indexOf(window[j]!) + 1);
+        const kind = detectTrigger(seg, expected, poi);
+        if (kind) { hit = { kind, bar: window[j]! }; break; }
+      }
+      if (hit) break;
+    }
   }
+  if (!hit) {
+    return { outcome: "watching", layer: 5, reason: "MSS 后等待回踩/追单条件（12 根窗口内）" };
+  }
+  const triggerKind = marketChase ? "marketChase" : hit.kind;
 
   // —— 入场 / 止损 / 止盈 ——
-  const entryRef = dir === "long" ? poi.high : poi.low;
+  // entryRef = 挂单价（FVG 边缘）；entryFinal = 实际成交价（挂单=entryRef，市价追=追单蜡烛收盘，S7）
+  const poiEdge = dir === "long" ? poi.high : poi.low;
+  const entryRef = poiEdge;
   const stopBuffer = params.stopBufferATR * atr30;
   let stopRef: number;
   if (trigger === "divergence") {

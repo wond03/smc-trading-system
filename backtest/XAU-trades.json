@@ -1,5 +1,22 @@
 [
   {
+    "signalNo": "XAU_sweep_4654.01_1787603400000_long",
+    "symbol": "XAU",
+    "direction": "long",
+    "trigger": "sweep",
+    "entry": 4665.993354,
+    "stop": 4657.929,
+    "tp": 4679.32,
+    "rr": 1.5074434415660238,
+    "qty": 0.1071,
+    "marginUsed": 5,
+    "openTime": 1787616000000,
+    "exitTime": 1787617800000,
+    "exitPrice": 4679.32,
+    "result": "tp",
+    "pnlUsd": 0.7276647431011896
+  },
+  {
     "signalNo": "XAU_sweep_4337_1788355800000_long",
     "symbol": "XAU",
     "direction": "long",
@@ -32,5 +49,39 @@
     "exitPrice": 4481.525428571428,
     "result": "stop",
     "pnlUsd": -1.4425380971135038
+  },
+  {
+    "signalNo": "XAU_sweep_4394.31_1788888600000_short",
+    "symbol": "XAU",
+    "direction": "short",
+    "trigger": "sweep",
+    "entry": 4370.426998999999,
+    "stop": 4373.674142857143,
+    "tp": 4339.9,
+    "rr": 8.167435728410302,
+    "qty": 0.1144,
+    "marginUsed": 5,
+    "openTime": 1788912000000,
+    "exitTime": 1788915600000,
+    "exitPrice": 4373.674142857143,
+    "result": "stop",
+    "pnlUsd": -1.0714408454170887
+  },
+  {
+    "signalNo": "XAU_sweep_4372.44_1789041600000_short",
+    "symbol": "XAU",
+    "direction": "short",
+    "trigger": "sweep",
+    "entry": 4363.086265,
+    "stop": 4371.256714285714,
+    "tp": 4346.78,
+    "rr": 1.8439092402940451,
+    "qty": 0.1145,
+    "marginUsed": 5,
+    "openTime": 1789045200000,
+    "exitTime": 1789047000000,
+    "exitPrice": 4371.256714285714,
+    "result": "stop",
+    "pnlUsd": -1.6349191714937887
   }
 ]

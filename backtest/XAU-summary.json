@@ -2,23 +2,23 @@
   "symbol": "XAU",
   "days": 60,
   "mode": "new",
-  "signalCount": 2,
-  "closed": 2,
-  "tp": 1,
-  "stop": 1,
-  "winRate": 0.5,
-  "totalPnl": 6.574528386451783,
-  "triggerSweep": 238,
+  "signalCount": 5,
+  "closed": 5,
+  "tp": 2,
+  "stop": 3,
+  "winRate": 0.4,
+  "totalPnl": 4.595833112642096,
+  "triggerSweep": 89,
   "triggerDivergence": 5,
   "rejected": {
-    "trigSweep": 238,
+    "trigSweep": 89,
     "trigDiv": 5,
-    "noTrig": 4,
-    "noPoi": 109,
-    "noMss": 29,
-    "rrReject": 3,
-    "noTarget": 0,
-    "stopTooFar": 2
+    "noTrig": 0,
+    "noPoi": 34,
+    "noMss": 6,
+    "rrReject": 29,
+    "noTarget": 4,
+    "stopTooFar": 13
   },
-  "generatedAt": "2026-10-22T04:40:25.766Z"
+  "generatedAt": "2026-10-22T04:54:45.468Z"
 }
