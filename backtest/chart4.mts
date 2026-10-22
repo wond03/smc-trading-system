@@ -79,10 +79,13 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
 
     // x 轴时间刻度（用户要求：K 线要有时间戳）——每 12 根（6h）一格
     let tickSvg = "";
-    for (let ti = 0; ti < cs.length; ti += 24) {
+    const tickIdxs: number[] = [];
+    for (let ti = 0; ti < cs.length - 18; ti += 24) tickIdxs.push(ti); // 中间刻度，距末尾<18根不放
+    tickIdxs.push(cs.length - 1); // 末尾 anchor=end
+    for (const ti of tickIdxs) {
       const d = new Date(cs[ti].openTime);
       const lab = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`;
-      const anchor = ti === 0 ? "start" : (ti + 24 >= cs.length ? "end" : "middle");
+      const anchor = ti === 0 ? "start" : (ti === cs.length - 1 ? "end" : "middle");
       tickSvg += `<line x1="${x(ti)}" y1="${H - padB}" x2="${x(ti)}" y2="${H - padB + 4}" stroke="#999" stroke-width="1"/><text x="${x(ti)}" y="${H - padB + 16}" fill="#666" font-size="15" text-anchor="${anchor}">${lab}</text>`;
     }
 
