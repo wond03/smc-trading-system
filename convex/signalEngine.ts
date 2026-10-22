@@ -89,15 +89,23 @@ export function evaluate(
   if (Number.isNaN(atr30) || candles30m.length < N30 * 2 + 20) {
     return { outcome: "watching", layer: 0, reason: "30M 蜡烛不足" };
   }
-  // 扳机时效：扫荡/背离后 12 根 30M（6 小时）内 MSS 确认有效，超期视为过期
-  const TRIGGER_VALID_BARS = 12;
+  // 扳机失效（2026-10-22 裁决：事件失效制，参照 ict-trading-model 状态机，替代固定 12 根）：
+  //   ① 结构止损位被反向收盘穿越 → 扳机作废
+  //   ② 目标流动性已被触及 → no-trade
+  //   ③ 背离扳机仍保留新鲜度（「背离一出就开单」），divValidBars 根内需 MSS
   const nowBar = candles30m[candles30m.length - 1]!.openTime;
+  const reversalClosed = (l: LiquidityLevel): boolean => {
+    // 结构位反向收盘穿越：多头扳机=收盘跌破该水平；空头=收盘升破
+    const recent = candles30m.slice(-3);
+    return recent.some((c) => (dir === "long" ? c.close < l.price : c.close > l.price));
+  };
+  // ② 目标流动性已被触及 → 第 5 层 targets 过滤天然拒绝（swept 状态的水平不算有效目标）
 
   // —— 第 2 层：扳机确认，二选一（裁决记录 §3-2：扫荡 或 背离）——
-  // 2a. 流动性扫荡分支（只取新鲜的扫荡：12 根内）
+  // 2a. 流动性扫荡分支（事件失效制：结构未被反向穿越即有效）
   const sweptCandidates = liquidity
     .filter((l) => l.status === "swept")
-    .filter((l) => nowBar - (l.sweptTime ?? 0) <= TRIGGER_VALID_BARS * 1800000);
+    .filter((l) => !reversalClosed(l));
   const swept = sweptCandidates.length
     ? sweptCandidates.reduce((a, b) => ((b.sweptTime ?? 0) > (a.sweptTime ?? 0) ? b : a))
     : null;

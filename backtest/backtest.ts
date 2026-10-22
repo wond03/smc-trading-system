@@ -175,10 +175,11 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
     }, symbol);
     if (!decision.allowed) continue;
 
-    // 7) 第 2 层：扳机（扫荡或背离，均限新鲜：12 根 30M 内）
-    const TRIGGER_VALID_MS = 12 * 1800000;
+    // 7) 第 2 层：扳机（扫荡或背离；扫荡=事件失效制：结构未被反向收盘穿越即有效）
+    const recent3 = m30.slice(-3);
     const sweptLevels: LiquidityLevel[] = levels
-      .filter((l) => l.status === "swept" && c.openTime - (l.sweptTime ?? 0) <= TRIGGER_VALID_MS)
+      .filter((l) => l.status === "swept")
+      .filter((l) => !recent3.some((c) => (dir === "up" ? c.close < l.price : c.close > l.price)))
       .map((l) => ({ kind: l.kind, price: l.price, status: "swept", sweptTime: l.sweptTime }));
     const div = detectDivergence(m30, 6);
     const divOk = div !== null && div.direction === (dir === "up" ? "long" : "short");

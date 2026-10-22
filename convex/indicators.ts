@@ -250,6 +250,13 @@ export interface Divergence {
  * 看空：镜像。返回背离低/高点作为止损参考。
  * 有效期：背离确认后 divValidBars 根内有效（信号是新鲜的——查尔斯「背离一出就开单」）。
  */
+/**
+ * 结构背离（查尔斯裸 K 口径，2026-10-22 裁决替换 RSI 代理）：
+ * - 「前后背离」：价格创更低低点（更高高点），但新低/新高摆动点的收线回头动能弱化——
+ *   量化为：新极值摆动点的回头根（收线反向蜡烛）实体幅度 < 前一极值摆动点的回头根实体幅度
+ * - 「结构位背离」：低点出现在结构位（前摆动点水平附近 ±0.25×ATR）且拐头，作为同义分支
+ * - CVD 佐证一期不做（数据源未接）；时效=事件失效制（见 signalEngine 扳机失效逻辑）
+ */
 export function detectDivergence(
   candles: Candle[],
   n = 6,
@@ -257,22 +264,31 @@ export function detectDivergence(
 ): Divergence | null {
   if (candles.length < n * 2 + 20) return null;
   const swings = swingPoints(candles, n);
-  const rsi = rsiSeries(candles);
   const lows = swings.filter((s) => s.kind === "low");
   const highs = swings.filter((s) => s.kind === "high");
-  const last = candles[candles.length - 1]!;
-  const confirmBar = candles.length - 1; // 背离确认点：最新已收盘蜡烛
+  const confirmBar = candles.length - 1;
 
-  // 从最近的摆动点往回找最近一组成立的背离，且确认距今 ≤ divValidBars
+  // 回头根动能：摆动点成形后第一根收线反向蜡烛的实体大小（收线回头根，Q12 口径）
+  const reversalBody = (idx: number, dir: "up" | "down"): number => {
+    for (let i = idx + 1; i < candles.length && i <= idx + n; i++) {
+      const c = candles[i]!;
+      if (dir === "up" && c.close > c.open) return c.close - c.open; // 下跌摆动点后的阳线回头
+      if (dir === "down" && c.close < c.open) return c.open - c.close;
+    }
+    return 0;
+  };
+
+  // 低位背离：价格更低低点 + 回头动能弱化（前后背离）；或结构位背离（贴近前低水平拐头）
   for (let k = lows.length - 1; k >= 1; k--) {
     const p = lows[k - 1]!, q = lows[k]!;
-    const rsiP = rsi[p.index] ?? NaN;
-    const rsiQ = rsi[q.index] ?? NaN;
-    if (Number.isNaN(rsiP) || Number.isNaN(rsiQ)) continue;
-    if (q.price < p.price && rsiQ > rsiP) {
-      // 背离需在 q 摆动点成形后（q.index + n 根）被最新蜡烛新鲜确认
-      const matureBar = q.index + n;
-      if (confirmBar - matureBar > divValidBars) return null; // 最近的背离已过期，不回溯更老的
+    const matureBar = q.index + n;
+    if (confirmBar - matureBar > divValidBars) return null; // 最近的背离已过期，不回溯
+    if (confirmBar < matureBar) continue; // 尚未成形
+    const bodyP = reversalBody(p.index, "up");
+    const bodyQ = reversalBody(q.index, "up");
+    const frontalDiv = q.price < p.price && bodyQ > 0 && bodyQ < bodyP; // 前后背离
+    const structuralDiv = Math.abs(q.price - p.price) / (p.price || 1) < 0.002 && q.price <= p.price; // 结构位背离（等低点附近拐头）
+    if (frontalDiv || structuralDiv) {
       const lowCandle = candles[q.index]!;
       return { direction: "long", divergenceLow: lowCandle.low, time: candles[matureBar]!.openTime };
     }
@@ -280,12 +296,14 @@ export function detectDivergence(
   }
   for (let k = highs.length - 1; k >= 1; k--) {
     const p = highs[k - 1]!, q = highs[k]!;
-    const rsiP = rsi[p.index] ?? NaN;
-    const rsiQ = rsi[q.index] ?? NaN;
-    if (Number.isNaN(rsiP) || Number.isNaN(rsiQ)) continue;
-    if (q.price > p.price && rsiQ < rsiP) {
-      const matureBar = q.index + n;
-      if (confirmBar - matureBar > divValidBars) return null;
+    const matureBar = q.index + n;
+    if (confirmBar - matureBar > divValidBars) return null;
+    if (confirmBar < matureBar) continue;
+    const bodyP = reversalBody(p.index, "down");
+    const bodyQ = reversalBody(q.index, "down");
+    const frontalDiv = q.price > p.price && bodyQ > 0 && bodyQ < bodyP;
+    const structuralDiv = Math.abs(q.price - p.price) / (p.price || 1) < 0.002 && q.price >= p.price;
+    if (frontalDiv || structuralDiv) {
       const highCandle = candles[q.index]!;
       return { direction: "short", divergenceHigh: highCandle.high, time: candles[matureBar]!.openTime };
     }

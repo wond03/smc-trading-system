@@ -1,1 +1,36 @@
-[]
+[
+  {
+    "signalNo": "BTC_sweep_79588.6_1788444000000_long",
+    "symbol": "BTC",
+    "direction": "long",
+    "trigger": "sweep",
+    "entry": 80631.43605,
+    "stop": 80460.78428571428,
+    "tp": 81062.5,
+    "rr": 2.3668875548556314,
+    "qty": 0.0062,
+    "marginUsed": 5,
+    "openTime": 1788449400000,
+    "exitTime": 1788451200000,
+    "exitPrice": 81062.5,
+    "result": "tp",
+    "pnlUsd": 1.9727156250859756
+  },
+  {
+    "signalNo": "BTC_sweep_84448_1790976600000_long",
+    "symbol": "BTC",
+    "direction": "long",
+    "trigger": "sweep",
+    "entry": 84618.33732,
+    "stop": 84596.23285714285,
+    "tp": 84782,
+    "rr": 5.077347291674899,
+    "qty": 0.0059,
+    "marginUsed": 5,
+    "openTime": 1791028800000,
+    "exitTime": 1791030600000,
+    "exitPrice": 84782,
+    "result": "tp",
+    "pnlUsd": 0.26666234573676456
+  }
+]

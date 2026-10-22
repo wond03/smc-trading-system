@@ -19,11 +19,20 @@ const QTY_PRECISION: Record<string, number> = { BTC: 4, XAU: 2 }; // 部署时�
 const MAX_RISK_PCT = 0.02;      // Q15：单笔风险 ≤2%（以保证金口径的止损距离约束）
 const MAX_CONCURRENT = 2;       // Q15：并发持仓 ≤2 张
 
-/** Q18：仅北京时间（UTC+8）20:00–24:00 开新仓 */
+/**
+ * 时段过滤（Q18 + 2026-10-22 补充裁决）：
+ * - 北京时间 20:00–24:00（纽约盘上午）+ 08:00–10:00（亚洲盘）
+ * - 周五停开按纽约时间：纽约周五 13:00（=北京周六 01:00，收盘前 4h）起至周末全程禁开新仓
+ */
 function inTradingWindow(nowMs: number): boolean {
   const bj = new Date(nowMs + 8 * 3600000);
   const hour = bj.getUTCHours();
-  return hour >= 20 && hour < 24;
+  const dow = bj.getUTCDay(); // 北京视角
+  // 纽约周五 13:00 = 北京周六 01:00。北京周六 01:00 起到周日全程禁开
+  if (dow === 6 && bj.getUTCHours() >= 1) return false;
+  if (dow === 0) return false;
+  if (dow === 6 && bj.getUTCHours() < 1) return hour >= 20; // 北京周五 20-24 实为纽约周五上午，允许
+  return (hour >= 20 && hour < 24) || (hour >= 8 && hour < 10);
 }
 
 export const runForSymbol = internalAction({
@@ -32,12 +41,10 @@ export const runForSymbol = internalAction({
     const now = Date.now();
 
     // —— 时段过滤 ——
-    const d = new Date(now);
-    const fridayLate = d.getUTCDay() === 5 && d.getUTCHours() >= 20;
-    if (!inTradingWindow(now) || fridayLate) {
+    if (!inTradingWindow(now)) {
       await ctx.runMutation(internal.records.logScan, {
         scanTime: now, symbol, outcome: "watching",
-        layerResults: { layer: 0, reason: fridayLate ? "周五收盘前4小时" : "时段外" },
+        layerResults: { layer: 0, reason: "时段外" },
       });
       return;
     }
