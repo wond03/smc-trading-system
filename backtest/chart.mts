@@ -35,11 +35,11 @@ const fmt = (ms: number) => {
     const xOpen = xi >= 0 ? x(xi) : x(0);
     const lines = `
       <line x1="${pad}" y1="${y(t.entry)}" x2="${W - pad}" y2="${y(t.entry)}" stroke="#2196f3" stroke-width="1.2" stroke-dasharray="6 3"/>
-      <text x="${W - pad + 4}" y="${y(t.entry) + 4}" fill="#2196f3" font-size="12">入 ${t.entry.toFixed(1)}</text>
+      <text x="${W - pad - 95}" y="${y(t.entry) + 4}" fill="#2196f3" font-size="12">入 ${t.entry.toFixed(1)}</text>
       <line x1="${pad}" y1="${y(t.stop)}" x2="${W - pad}" y2="${y(t.stop)}" stroke="#ef5350" stroke-width="1.2" stroke-dasharray="6 3"/>
-      <text x="${W - pad + 4}" y="${y(t.stop) + 4}" fill="#ef5350" font-size="12">损 ${t.stop.toFixed(1)}</text>
+      <text x="${W - pad - 95}" y="${y(t.stop) + 4}" fill="#ef5350" font-size="12">损 ${t.stop.toFixed(1)}</text>
       <line x1="${pad}" y1="${y(t.tp)}" x2="${W - pad}" y2="${y(t.tp)}" stroke="#26a69a" stroke-width="1.2" stroke-dasharray="6 3"/>
-      <text x="${W - pad + 4}" y="${y(t.tp) + 4}" fill="#26a69a" font-size="12">盈 ${t.tp.toFixed(1)} RR${t.rr.toFixed(1)}</text>
+      <text x="${W - pad - 95}" y="${y(t.tp) + 4}" fill="#26a69a" font-size="12">盈 ${t.tp.toFixed(1)} RR${t.rr.toFixed(1)}</text>
       <line x1="${xOpen}" y1="${pad}" x2="${xOpen}" y2="${H - pad}" stroke="#999" stroke-width="1" stroke-dasharray="3 3"/>
       <text x="${xOpen + 4}" y="${pad + 12}" fill="#444" font-size="11">开仓 ${fmt(t.openTime)}</text>`;
     const title = `${t.symbol} ${t.direction.toUpperCase()} [${t.trigger}] ${t.result === "tp" ? "止盈" : t.result === "stop" ? "止损" : t.result} ${t.pnlUsd >= 0 ? "+" : ""}${t.pnlUsd.toFixed(2)}U`;
