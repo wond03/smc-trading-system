@@ -54,7 +54,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
     const poi = zones.filter(z => dirLong ? z.direction === "long" : z.direction === "short").slice(-1)[0];
 
     // —— 画布 ——
-    const W = 1240, H = 600, padL = 15, padR = 270, padT = 30, padB = 60;
+    const W = 1100, H = 1500, padL = 20, padR = 280, padT = 50, padB = 110;
     const plotW = W - padL - padR;
     const allPrices = [...cs.map(c => c.low), ...cs.map(c => c.high), t.stop, t.tp, ...uniq.map(l => l.price)];
     const lo = Math.min(...allPrices) * 0.9993, hi = Math.max(...allPrices) * 1.0007;
@@ -77,7 +77,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
     for (let ti = 0; ti < cs.length; ti += 12) {
       const d = new Date(cs[ti].openTime);
       const lab = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`;
-      tickSvg += `<line x1="${x(ti)}" y1="${H - padB}" x2="${x(ti)}" y2="${H - padB + 4}" stroke="#999" stroke-width="1"/><text x="${x(ti)}" y="${H - padB + 16}" fill="#666" font-size="10" text-anchor="middle">${lab}</text>`;
+      tickSvg += `<line x1="${x(ti)}" y1="${H - padB}" x2="${x(ti)}" y2="${H - padB + 4}" stroke="#999" stroke-width="1"/><text x="${x(ti)}" y="${H - padB + 16}" fill="#666" font-size="15" text-anchor="middle">${lab}</text>`;
     }
 
     // —— 右侧标签防重叠布局 ——
@@ -114,7 +114,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
       // 引导线：从线条右端连到文字位置（错开时可见）
       if (Math.abs(l.textY - lineY) > 3)
         rightCol += `<line x1="${padL + plotW}" y1="${lineY}" x2="${padL + plotW + 6}" y2="${l.textY - 3}" stroke="${l.color}" stroke-width="0.8"/>`;
-      rightCol += `<text x="${padL + plotW + 10}" y="${l.textY + 4}" fill="${l.color}" font-size="12" ${l.bold ? 'font-weight="bold"' : ""}>${l.text}</text>`;
+      rightCol += `<text x="${padL + plotW + 10}" y="${l.textY + 4}" fill="${l.color}" font-size="17" ${l.bold ? 'font-weight="bold"' : ""}>${l.text}</text>`;
     }
 
     // 结构折线 + 转
@@ -122,7 +122,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
     if (pivots.length >= 2) {
       struct = `<polyline points="${pivots.map(s => `${x(s.index)},${y(s.price)}`).join(" ")}" fill="none" stroke="#555" stroke-width="1.5" stroke-dasharray="5 3"/>`;
       const lp = pivots[pivots.length - 1];
-      turnMark = `<text x="${x(lp.index) + 8}" y="${y(lp.price) - 10}" fill="#9c27b0" font-size="12" font-weight="bold">转（收线回头）</text>`;
+      turnMark = `<text x="${x(lp.index) + 8}" y="${y(lp.price) - 10}" fill="#9c27b0" font-size="17" font-weight="bold">转（收线回头）</text>`;
     }
 
     // FVG（画到开仓竖线为止）
@@ -139,7 +139,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
       if (si >= 0) {
         const c = cs[si];
         sweepMark = `<circle cx="${x(si)}" cy="${dirLong ? y(c.low) : y(c.high)}" r="10" fill="none" stroke="#ff9800" stroke-width="2"/>
-          <text x="${Math.max(x(si) - 30, padL)}" y="${dirLong ? y(c.low) + 26 : y(c.high) - 16}" fill="#ff9800" font-size="11" font-weight="bold">扫荡（挂单被吃）</text>`;
+          <text x="${Math.max(x(si) - 30, padL)}" y="${dirLong ? y(c.low) + 26 : y(c.high) - 16}" fill="#ff9800" font-size="16" font-weight="bold">扫荡（挂单被吃）</text>`;
       }
     }
 
@@ -147,14 +147,14 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
     const result = t.result === "tp" ? `止盈 ${t.pnlUsd.toFixed(2)}U` : t.result === "stop" ? `止损 ${t.pnlUsd.toFixed(2)}U` : t.result;
     const bottom = `
       <line x1="${xOpen}" y1="${padT}" x2="${xOpen}" y2="${H - padB}" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>
-      <text x="${Math.max(xOpen - 85, padL)}" y="${padT + 12}" fill="#444" font-size="11">开仓 ${fmt(t.openTime)}</text>
+      <text x="${Math.max(xOpen - 85, padL)}" y="${padT + 12}" fill="#444" font-size="16">开仓 ${fmt(t.openTime)}</text>
       <circle cx="${xOpen}" cy="${y(t.entry)}" r="9" fill="none" stroke="#2196f3" stroke-width="2.5"/>
-      <text x="${padL}" y="${H - 40}" fill="#555" font-size="12" font-weight="bold">路径：扫荡 → 转确认 → 回踩FVG入场 → 打目标流动性　|　结果：${result}　持仓 ${Math.round((t.exitTime - t.openTime) / 3600000)}h</text>
-      <text x="${padL}" y="${H - 20}" fill="#999" font-size="10">周期 30M ｜ 打掉即错，不拉损</text>`;
+      <text x="${padL}" y="${H - 60}" fill="#555" font-size="17" font-weight="bold">路径：扫荡 → 转确认 → 回踩FVG入场 → 打目标流动性　|　结果：${result}　持仓 ${Math.round((t.exitTime - t.openTime) / 3600000)}h</text>
+      <text x="${padL}" y="${H - 30}" fill="#999" font-size="15">周期 30M ｜ 打掉即错，不拉损</text>`;
     const openD = new Date(t.openTime);
   const ts = `${String(openD.getMonth() + 1).padStart(2, "0")}-${String(openD.getDate()).padStart(2, "0")} ${String(openD.getHours()).padStart(2, "0")}:${String(openD.getMinutes()).padStart(2, "0")} 北京`;
   const title = `#${tradeIdx + 1} ${t.symbol} ${t.direction.toUpperCase()} [${t.trigger}] ${openD.getFullYear()}-${ts} ${result}`;
-    svgs.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><text x="${padL}" y="22" fill="#111" font-size="15" font-weight="bold">${title}</text>${bars}${fvgRect}${struct}${turnMark}${sweepMark}${rightCol}${tickSvg}${bottom}</svg>`);
+    svgs.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><text x="${padL}" y="22" fill="#111" font-size="24" font-weight="bold">${title}</text>${bars}${fvgRect}${struct}${turnMark}${sweepMark}${rightCol}${tickSvg}${bottom}</svg>`);
   }
   writeFileSync(`backtest/${symbol}-story4.svg`, svgs.join("\n"));
   console.log(`生成 ${svgs.length} 张 v4`);
