@@ -74,10 +74,11 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
 
     // x 轴时间刻度（用户要求：K 线要有时间戳）——每 12 根（6h）一格
     let tickSvg = "";
-    for (let ti = 0; ti < cs.length; ti += 12) {
+    for (let ti = 0; ti < cs.length; ti += 24) {
       const d = new Date(cs[ti].openTime);
       const lab = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`;
-      tickSvg += `<line x1="${x(ti)}" y1="${H - padB}" x2="${x(ti)}" y2="${H - padB + 4}" stroke="#999" stroke-width="1"/><text x="${x(ti)}" y="${H - padB + 16}" fill="#666" font-size="15" text-anchor="middle">${lab}</text>`;
+      const anchor = ti === 0 ? "start" : (ti + 24 >= cs.length ? "end" : "middle");
+      tickSvg += `<line x1="${x(ti)}" y1="${H - padB}" x2="${x(ti)}" y2="${H - padB + 4}" stroke="#999" stroke-width="1"/><text x="${x(ti)}" y="${H - padB + 16}" fill="#666" font-size="15" text-anchor="${anchor}">${lab}</text>`;
     }
 
     // —— 右侧标签防重叠布局 ——
@@ -96,7 +97,7 @@ const symbol = (process.argv[2] ?? "BTC").toUpperCase();
     for (const l of labels) l.textY = y(l.py); // 初始文字位置=价格位置
     for (let i = 1; i < labels.length; i++) {
       const prev = labels[i-1], cur = labels[i];
-      const prevBottom = prev.textY + 12, curTop = cur.textY - 4;
+      const prevBottom = prev.textY + 20, curTop = cur.textY - 6;
       if (curTop < prevBottom) cur.textY = prevBottom + 4;
     }
     // 底部溢出：整体上移文字
