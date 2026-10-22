@@ -139,6 +139,8 @@ export function evaluate(
   const poi = poiCandidates[poiCandidates.length - 1]!;
 
   // —— 第 5 层：回踩 POI + 触发形态（Q14：确认后挂回踩）——
+  // 回踩判定：影线触及 FVG 区间即算（实盘挂单语义——限价单挂在 FVG 边缘，影线扫到即成交），
+  // 之后仍需触发形态做右侧确认（2026-10-22 裁决：影线触及，非收盘进入）
   const last30 = candles30m[candles30m.length - 1]!;
   const inPoi = last30.low <= poi.high && last30.high >= poi.low;
   if (!inPoi) {

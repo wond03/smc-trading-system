@@ -145,12 +145,13 @@ async function runBacktest(symbol: string, days: number, oldMode: boolean) {
       }
     }
 
-    // 4) 时段过滤（Q18：北京时间 20:00–24:00；周五 UTC 20:00 后禁开）
+    // 4) 时段过滤（Q18+S1/S2：北京 20:00–24:00 与 08:00–10:00；纽约周五 13:00=北京周六 01:00 起禁开）
     const bj = new Date(c.openTime + 8 * 3600000);
     const bjHour = bj.getUTCHours();
-    const utcD = new Date(c.openTime);
-    if (bjHour < 20 || bjHour >= 24) continue;
-    if (utcD.getUTCDay() === 5 && utcD.getUTCHours() >= 12) continue; // 周五北京 20 点 = UTC 12 点
+    const bjDow = bj.getUTCDay();
+    const inWin = (bjHour >= 20 && bjHour < 24) || (bjHour >= 8 && bjHour < 10);
+    if (!inWin) continue;
+    if ((bjDow === 6 && bjHour >= 1) || bjDow === 0) continue; // 纽约周五收盘前 4h 起至周末
 
     // 5) 第 1 层：4H 与 30M 同向（收线回头 BOS）
     const m30 = m30All.slice(Math.max(0, i - 299), i + 1);
